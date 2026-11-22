@@ -4,7 +4,7 @@ An auction house and profession addon for World of Warcraft Forever. Scan your r
 
 ## Install with WowUp
 
-Select **WoW Forever**, open **Get Addons → Install from URL**, and paste **https://github.com/Tsadd93/ForeverMarket**. For a manual install, extract the release ZIP into your Forever client's Interface/AddOns folder.
+Select **WoW Forever**, open **Get Addons → Install from URL**, and paste **https://github.com/drixthegamer/ForeverMarket**. For a manual install, extract the release ZIP into your Forever client's Interface/AddOns folder.
 
 ## First session
 
