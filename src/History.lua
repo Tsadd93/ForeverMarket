@@ -1,3 +1,12 @@
+-- Venue is set on AH open before a scan. Keep the last venue for offline review/export.
+local neutral=false
+function ForeverMarketSetVenue(isNeutral) neutral=isNeutral==true end
+local clientRealm=GetRealmName
+function ForeverMarketVenueRealm()
+  local realm=clientRealm() or ''
+  return neutral and (realm..' [Neutral AH]') or realm
+end
+local GetRealmName=ForeverMarketVenueRealm
 -- Price history is indexed by market and UTC day; the desktop export keeps original observation timestamps.
 local function scope(realm,faction,region)
   return tostring(region)..'|'..realm..'|'..faction
@@ -75,6 +84,7 @@ function ForeverMarketObserve(key,price,quantity,bulk)
   local market=GetRealmName()..'|'..UnitFactionGroup('player')
   ForeverMarketDB[market]=ForeverMarketDB[market] or {}
   ForeverMarketDB[market][key]={price=price,quantity=quantity,at=now}
+  if ForeverMarketTools and ForeverMarketTools.checkAlert then ForeverMarketTools.checkAlert(key,price) end
   if bulk then r.bulk={price=bulk,at=now} end
 end
 

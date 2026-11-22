@@ -1,3 +1,4 @@
+local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName and _G.GetRealmName() or '' end
 -- Conservative resale assumptions shared by both auction tabs.
 function ForeverMarketPostPrice(bulkAsk)
   return math.max(1,bulkAsk-2)
@@ -64,7 +65,7 @@ function ForeverMarketHover(parent,y,width,row)
   hit:SetHighlightTexture('Interface\\QuestFrame\\UI-QuestTitleHighlight','ADD')
   hit:SetFrameLevel(parent:GetFrameLevel())
   hit:SetScript('OnEnter',function(self)
-    if row.itemRef then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink(row.itemRef);GameTooltip:Show() end
+    if row.itemRef then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink(row.itemRef);if row.marketId and ForeverMarketTools and ForeverMarketTools.explain then ForeverMarketTools.explain(GameTooltip,row.marketId,row.priceReason) elseif row.saleText then GameTooltip:AddLine(row.saleText) end;GameTooltip:Show() end
   end)
   hit:SetScript('OnLeave',function()GameTooltip:Hide()end)
   return hit
@@ -139,7 +140,7 @@ local function export(quiet)
       end
     end
   end
-  ForeverMarketExport=json({version=1,realm=GetRealmName(),faction=UnitFactionGroup('player'),region=GetCurrentRegion(),exportedAt=time(),gold=GetMoney(),rows=rows,activity=ForeverMarketActivity and ForeverMarketActivity.events})
+  ForeverMarketExport=json({version=1,realm=GetRealmName(),faction=UnitFactionGroup('player'),region=GetCurrentRegion(),exportedAt=time(),gold=GetMoney(),rows=rows,activity=ForeverMarketDesktopEvents and ForeverMarketDesktopEvents()})
   if not quiet then print('|cff65dfc0Forever Market:|r Exported '..count..' items. Type /reload to save for the desktop app.') end
 end
 local f=CreateFrame('Frame')
@@ -152,7 +153,9 @@ end)
 SLASH_FOREVERMARKET1='/fm'
 SlashCmdList.FOREVERMARKET=function(msg)
   msg=(msg or ''):lower():match('^%s*(.-)%s*$')
-  if msg=='scan' and ForeverMarketScan then ForeverMarketScan()
+  if msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()
+  elseif msg=='manage' and ForeverMarketTools and ForeverMarketTools.openManager and AuctionHouseFrame and AuctionHouseFrame:IsShown() then ForeverMarketTools.openManager()
+  elseif msg=='scan' and ForeverMarketScan then ForeverMarketScan()
   elseif msg=='' or msg=='export' then export(false)
   elseif msg=='scanstatus' then
     local r=ForeverMarketDB and ForeverMarketDB.lastBuyScan

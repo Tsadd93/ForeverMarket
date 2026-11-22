@@ -1,3 +1,4 @@
+local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName and _G.GetRealmName() or '' end
 local api=C_AuctionHouse
 if not api then return end
 local panel,status,balance,content,scroll
@@ -73,9 +74,13 @@ local function onHand()
   return bags
 end
 local function room(id,stack)
+  local group=ForeverMarketTools and ForeverMarketTools.group and ForeverMarketTools.group(id)
   local limit=(stack or 1)*(staples[id] and 2 or 1)
+  if group and group.stock>0 then limit=group.stock end
   return math.max(0,limit-(onHand()[id] or 0))
 end
+local watchScan=false
+local watchAgain=0
 local itemConfirmation=false
 local scanWait
 local scanWake=false
@@ -263,6 +268,7 @@ local function rankCandidates(snapshot,grouped,cash)
   leads=eligible;totalLeads=#leads
   local deferred={}
   local fresh=snapshot and GetTime()-snapshot.at<60
+  if watchScan then snapshot=nil end
   if snapshot then
     local picks={}
     for _,lead in ipairs(leads) do
@@ -293,7 +299,10 @@ local function rankCandidates(snapshot,grouped,cash)
       end
       if pick then picks[#picks+1]=lead
       elseif not fresh or lead.id<0 then deferred[#deferred+1]=lead
-      else screened=screened+1 end
+      else screened=screened+1
+        local reason=not d and "noSupply" or d.low>cash and "overBudget" or "weakSpread"
+        report[reason]=(report[reason] or 0)+1
+      end
     end
     leads=picks
   end
@@ -342,7 +351,7 @@ local function candidates(keepVerified,snapshot)
   screened,browseFallback=0,0
   rechecked={}
   junkCount,unknownCount,pendingFilter=0,0,nil
-  local grouped=supportsBrowse()
+  local grouped=not watchScan and supportsBrowse()
   if not keepVerified then verified={} end
   if ForeverMarketRepairHistory then report.merged=ForeverMarketRepairHistory() end
   local db=ForeverMarketHistory()
@@ -361,11 +370,12 @@ local function candidates(keepVerified,snapshot)
   end
   local today=math.floor(time()/86400)
   local byId={}
+  report.thinHistory=0;report.overBudget=0;report.weakSpread=0;report.noSupply=0
   for key,r in pairs(db) do
     local raw=tostring(key)
     local species=tonumber(raw:match('^p:(%d+)$'))
     local id=species and -species or tonumber(raw) or tonumber(raw:match('^gr?:(%d+):'))
-    if id and type(r)=='table' and type(r.m)=='number' and r.m>0 and r.h then
+    if id and (not watchScan or ForeverMarketTools.favorite(id)) and type(r)=='table' and type(r.m)=='number' and r.m>0 and r.h then
       local prices,recentPrices={},{}
       local scarceDays=0
       for day,hi in pairs(r.h) do
@@ -378,6 +388,7 @@ local function candidates(keepVerified,snapshot)
           if qty and qty>0 and qty<=3 then scarceDays=scarceDays+1 end
         end
       end
+      if #prices<3 then report.thinHistory=report.thinHistory+1 end
       if #prices>=3 then
         table.sort(prices)
         local ref=prices[math.ceil(#prices/2)]
@@ -393,7 +404,7 @@ local function candidates(keepVerified,snapshot)
           -- even when the last scan's minimum was close to the usual price.
           local discounted=ref*ForeverMarketKeepBP()>=r.m*(10000+ForeverMarketMarginBP())
           local recent=book and book[id]
-          if snapshot or grouped or discounted or r.m<=cash or (recent and recent.low and recent.low<=cash and recent.at and now-recent.at<300) then
+          if watchScan or snapshot or grouped or discounted or r.m<=cash or (recent and recent.low and recent.low<=cash and recent.at and now-recent.at<300) then
             local potential=0
             if recent and recent.low and recent.low>0 and recent.lowQty and recent.floorPrice and recent.at and now>=recent.at and now-recent.at<300 then
               local ask=recent.nextPrice and commodityResaleAsk(recent) or recent.floorPrice
@@ -461,7 +472,16 @@ end
 local function plan()
   local choices={}
   for _,v in pairs(verified) do if GetTime()-v.at<60 then choices[#choices+1]=v end end
-  table.sort(choices,function(a,b)if a.edge/a.low==b.edge/b.low then return a.id<b.id end return a.edge/a.low>b.edge/b.low end)
+  local scores={}
+  for _,v in ipairs(choices) do
+    local weight=1
+    if ForeverMarketTools and ForeverMarketTools.salesWeight then
+      local name=C_Item.GetItemNameByID(v.itemID or v.id)
+      if name then weight=ForeverMarketTools.salesWeight(name) end
+    end
+    scores[v]=weight*v.edge/v.low
+  end
+  table.sort(choices,function(a,b)if scores[a]==scores[b] then return a.id<b.id end return scores[a]>scores[b] end)
   local start=available()
   local function fill(order)
     local list,cash,gain={},start,0
@@ -470,7 +490,8 @@ local function plan()
       local net=netResale(v,n)
       local expectedNet=net-ForeverMarketDepositLoss(n)
       local profit=expectedNet-n*v.low
-      if n>0 and profit>0 and profit*10000>=n*v.low*ForeverMarketMarginBP() and expectedNet>n*v.vendor and v.exit>=ForeverMarketFundHoldPrice(v.variant or v.id,n,dep) then
+      local group=ForeverMarketTools and ForeverMarketTools.group and ForeverMarketTools.group(v.itemID or v.id)
+      if n>0 and (not group or group.cap==0 or not group.cap or v.low<=group.cap) and profit>0 and profit*10000>=n*v.low*math.max(ForeverMarketMarginBP(),group and group.margin*100 or 0) and expectedNet>n*v.vendor and v.exit>=ForeverMarketFundHoldPrice(v.variant or v.id,n,dep) then
         list[#list+1]={v=v,n=n,dep=dep};cash=cash-n*v.low-dep;gain=gain+profit
       end
     end
@@ -590,6 +611,10 @@ local function render()
     local p=row.pick
     local live=p and quote and quote.id==p.v.id and quote.n==p.n and GetTime()-quote.at<8 and quote.total
     row.buyTotal=p and not p.inactive and (live or p.n*p.v.low)
+    local itemName=p and C_Item.GetItemNameByID(p.v.itemID or p.v.id)
+    row.marketId=p and (p.v.itemID or p.v.id)
+    row.priceReason=p and not p.inactive and ("Exit per item "..ForeverMarketCoins(p.v.exit).." / deposit reserved "..ForeverMarketCoins(p.dep or 0)) or nil
+    row.saleText=itemName and ForeverMarketTools and ForeverMarketTools.saleLabel and ForeverMarketTools.saleLabel(itemName)
     row.qty:SetText(p and p.n or '')
     row.cost:SetText(row.buyTotal and ForeverMarketCoins(row.buyTotal) or '')
     local resale=row.buyTotal and netResale(p.v,p.n)
@@ -604,7 +629,7 @@ local function render()
   elseif quote then return
   elseif available()==0 then note('No trading cash available for a purchase.')
   elseif missingScan then note('Open Market Scan to collect price history.')
-  elseif totalLeads==0 then note(('No eligible candidates · %d junk filtered · %d uncached'):format(junkCount,unknownCount))
+  elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates · %d junk filtered · %d uncached'):format(junkCount,unknownCount))
   else
     local progress=('%g%% | %d/%d resolved | %d unanswered'):format(ForeverMarketMarginBP()/100,math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
     if #categories>0 then
@@ -622,7 +647,7 @@ local function render()
     if unknownCount>0 then progress=progress..(' | %d uncached'):format(unknownCount) end
     if buyCount>0 then note(progress);if completed then detail:SetText(('Complete · %d shopping list items'):format(buyCount)) end
     elseif browse or categoryIndex<=#categories or search or cursor<=#leads then note(progress)
-    else note(progress);detail:SetText('Complete · no verified buys within budget') end
+    else note(progress);detail:SetText(('Short history %d / over budget %d / spread %d / no supply %d'):format(report.thinHistory or 0,report.overBudget or 0,report.weakSpread or 0,report.noSupply or 0)) end
   end
 end
 local function inspect(id)
@@ -857,7 +882,7 @@ local function create()
     report={at=time(),target=ForeverMarketMarginBP(),cash=available(),source='browse'}
     ForeverMarketDB.lastBuyScan=report
     awaitingBulk=false
-    waitingSince=ForeverMarketSnapshot and startedAt or nil
+    waitingSince=not watchScan and ForeverMarketSnapshot and startedAt or nil
     if not waitingSince then candidates() end
     tick(true)
   end
@@ -866,19 +891,25 @@ local function create()
     b:SetSize(65,24);b:SetPoint('TOPLEFT',x,0);b:SetText(text);b:SetScript('OnClick',fn)
     return b
   end
-  local startButton=control('Start',442,start)
+  local startButton=control('Start',442,function()watchScan=false;start() end)
   local stopButton=control('Stop',511,function()
-    running=false;completed=false;search=nil;browse=nil;clearQuote();fundMessageUntil=0;render()
+    watchScan=false;running=false;completed=false;search=nil;browse=nil;clearQuote();fundMessageUntil=0;render()
   end)
   control('Restart',580,start)
-  if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-72,-37) end
+  if ForeverMarketTools then
+  local wb=control('Watch',0,function()
+    if not ForeverMarketTools or not ForeverMarketTools.favorite then return end
+    watchScan=true;watchAgain=GetTime()+60;start()
+  end)
+  wb:ClearAllPoints();wb:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-72,-32) end
+  if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-37) end
   scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-108);scroll:SetPoint('BOTTOMRIGHT',-26,4)
   content=CreateFrame('Frame',nil,scroll);content:SetSize(678,1);scroll:SetScrollChild(content)
   panel:SetScript('OnShow',function()
     remembered,displayOrder,verified={},{},{};running=false;completed=false;fundMessageUntil=0
     edit:SetText(fund().cash/10000);target:SetText(ForeverMarketMarginBP()/100);render()
   end)
-  panel:SetScript('OnHide',function()updateReport('closed');running=false;clearQuote();search=nil;browse=nil end)
+  panel:SetScript('OnHide',function()watchScan=false;updateReport('closed');running=false;clearQuote();search=nil;browse=nil end)
   local scanElapsed,uiElapsed=0,0
   panel:SetScript('OnUpdate',function(_,dt)
     scanElapsed=scanElapsed+dt
@@ -888,7 +919,8 @@ local function create()
     scanElapsed=0
     local refreshUI=uiElapsed>=.5
     if refreshUI then uiElapsed=0 end
-    startButton:SetEnabled(not running);stopButton:SetEnabled(running)
+    startButton:SetEnabled(not running);stopButton:SetEnabled(running or watchScan)
+    if watchScan and completed and not running and not fund().pending and not quote and GetTime()>=watchAgain then watchAgain=GetTime()+60;start();return end
     if running then tick(refreshUI) elseif refreshUI then
       if quote and GetTime()-quote.at>9 then clearQuote() end
       render()
@@ -922,6 +954,7 @@ function ForeverMarketFundActivity(kind,e)
       bought.n=bought.n+p.n;bought.cost=bought.cost+e.total
       ForeverMarketTools.invalidate();return
     end
+    if ForeverMarketTools and ForeverMarketTools.trackAcquisition then ForeverMarketTools.trackAcquisition(e.name,p.n) end
     local holding=p.holding or p.id
     local h=f.held[holding] or {n=0,reserve=0};f.held[holding]=h
     h.itemID=p.id;h.lead=p.lead or p.id;h.inMail=(h.inMail or 0)+p.n
@@ -937,15 +970,23 @@ function ForeverMarketFundActivity(kind,e)
     local t=posting;posting=nil;local h=f.held[t.id]
     local dep=t.dep or api.CalculateCommodityDeposit(t.itemID,1,t.n)
     if dep then
+      local basis=math.floor((h.cost or 0)*t.tracked/h.n)
       h.cost=math.ceil((h.cost or 0)*(h.n-t.tracked)/h.n);f.cash=f.cash-math.ceil(dep*t.tracked/t.n);h.reserve=math.floor(h.reserve*(h.n-t.tracked)/h.n);h.n=h.n-t.tracked
-      f.lots[#f.lots+1]={name=e.name,n=t.tracked,price=t.price,auctionId=e.auctionId}
+      f.lots[#f.lots+1]={name=e.name,n=t.tracked,posted=t.n,basis=basis,holding=t.id,itemID=t.itemID,deposit=math.ceil(dep*t.tracked/t.n),price=t.price,auctionId=e.auctionId}
     end
   elseif kind=='proceeds_collected' and e.invoiceType=='seller' and e.quantity and e.quantity>0 and e.amount and e.fee and e.deposit then
     local gross=e.amount+e.fee-e.deposit
     local remain=e.quantity
     for _,lot in ipairs(f.lots) do
       if lot.sold and lot.name==e.name and lot.price*e.quantity==gross and remain>0 then
-        local n=math.min(remain,lot.n);lot.n=lot.n-n;remain=remain-n
+        local n=math.min(remain,lot.n)
+        if lot.basis and ForeverMarketTools and ForeverMarketTools.settleLot then
+          local basis=math.floor(lot.basis*n/lot.n)
+          ForeverMarketTools.settleLot(lot,e,n,basis)
+          lot.basis=lot.basis-basis
+          lot.deposit=lot.deposit-math.floor(lot.deposit*n/lot.n)
+        end
+        lot.n=lot.n-n;remain=remain-n
       end
     end
     f.cash=f.cash+math.floor(e.amount*(e.quantity-remain)/e.quantity)

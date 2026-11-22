@@ -37,7 +37,7 @@ local function render()
         local batches=mode=='Build list' and a.build[key] or n
         local e,why=M.estimate(r,batches)
         list[#list+1]={key=key,name=r.name,info=e and money(e.cash) or why,
-          value=e and money(e.profit) or '',score=e and e.profit or -math.huge,estimate=e,n=batches}
+          value=e and money(e.profit) or '',score=e and e.profit*(M.salesWeight and M.salesWeight(r.name) or 1) or -math.huge,estimate=e,n=batches}
       end
     end
   end
@@ -81,6 +81,12 @@ local function create()
     local s=M.settings();s.cutBP=math.floor(f*100+.5);s.lostDepositPerUnit=l
     fee:ClearFocus();loss:ClearFocus();render();notice:SetText('Pricing settings saved.')
   end)
+  button(panel,433,-30,160,'Use stored stock',function(self)
+    local a=M.account();a.useTransfers=not a.useTransfers
+    self:SetText(a.useTransfers and 'Use bag stock only' or 'Use stored stock');M.cancelMaterial();M.invalidate();render()
+    notice:SetText(a.useTransfers and 'Shopping accounts for recently observed transferable stock. Collect it before crafting.' or 'Shop using current bag quantities.')
+  end):SetText(M.account().useTransfers and 'Use bag stock only' or 'Use stored stock')
+  button(panel,424,0,55,'Manage',function() if M.openManager then M.openManager() end end)
   notice=text(panel,4,-58,650)
   ForeverMarketResults(panel,80,{{'Recipe / material',0},{'Missing materials',202},{'Profit / cost',447},{'Action',566}})
   for i=1,9 do
@@ -112,6 +118,7 @@ local function create()
         local r=M.account().recipes[d.key]
         if d.estimate then
           local e=d.estimate
+          if M.saleLabel then GameTooltip:AddLine(M.saleLabel(r.name)) end
           GameTooltip:AddDoubleLine('Post per unit',money(e.post))
           GameTooltip:AddDoubleLine('Minimum output',tostring(e.units))
           GameTooltip:AddDoubleLine('Buy every material',money(e.all))
@@ -123,13 +130,16 @@ local function create()
         for id,n in pairs(M.inputs(r,d.n) or r.materials) do
           GameTooltip:AddDoubleLine(C_Item.GetItemNameByID(id) or ('Item '..id),tostring(n*d.n))
         end
-      else GameTooltip:AddLine(d.info);GameTooltip:AddLine(d.value) end
+      else GameTooltip:AddLine(d.info);GameTooltip:AddLine(d.value)
+        if M.explain then M.explain(GameTooltip,d.id) end
+        if M.transferPlan then local plan=M.transferPlan(d.id,math.max(0,(M.materials()[d.id] or 0)-M.bagCount(d.id)-(M.account().transit[d.id] or 0)));GameTooltip:AddLine(plan,1,.85,.35,true) end
+      end
       GameTooltip:Show()
     end)
     row.hover:SetScript('OnLeave',function() GameTooltip:Hide() end)
     rows[i]=row
   end
-  button(panel,470,0,44,'Prev',function()page=math.max(1,page-1);render()end)
+  button(panel,483,0,44,'Prev',function()page=math.max(1,page-1);render()end)
   panel.page=text(panel,520,-5,60)
   button(panel,580,0,48,'Next',function()page=page+1;render()end)
   panel:SetScript('OnShow',function()
@@ -170,6 +180,7 @@ function M.tooltip(tip,bag,slot)
   else tip:AddLine(bound and 'Bound' or 'AH price unknown',.75,.75,.75) end
   if vendor then line('Vendor',vendor,vendor*n) end
   if (M.materials()[id] or 0)>0 then tip:AddLine('Reserved for crafting',1,.8,.2) end
+  if M.valueLines then M.valueLines(tip,id,item.hyperlink) end
   tip:Show()
 end
 local events=CreateFrame('Frame')

@@ -6,6 +6,14 @@ An auction house and profession addon for World of Warcraft Forever. Scan your r
 
 Select **WoW Forever**, open **Get Addons → Install from URL**, and paste **https://github.com/drixthegamer/ForeverMarket**. For a manual install, extract the release ZIP into your Forever client's Interface/AddOns folder.
 
+## Updates and version checks
+
+Open **My Addons** in WowUp to update an existing GitHub installation. In game, Forever Market announces a newer version when a guild or group member running a version-aware build reports it. The notice appears once per newer version. Type `/fm version` to see your installed version and the latest version reported to you.
+
+## Auction tools
+
+At the auction house, use `/fm manage` to review undercuts, inspect an item's ledger, and open **Browse** for saved searches, vendor deals, and live purchase quotes. **Market Sell** supports editable quantities and **Post next**. **Market Buy → Watch** checks favorite items. Craft planning can use last-seen inventory across characters, and trade groups share stocking and posting settings.
+
 ## Optional Windows dashboard
 
 [Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.
@@ -21,3 +29,7 @@ To connect your character, run an auction scan in WoW, then use `/fm export` and
 5. In **Craft**, review material costs and estimated proceeds. Add recipes to your build list and use **Materials** to shop for the missing quantities.
 
 Purchases and posts require player input. Estimated proceeds depend on an item selling. All core features work with the game addon alone.
+
+## Publishing an addon update
+
+Update the version in `ForeverMarket.toc` alongside addon changes on main. The release workflow runs the Lua simulations, compiles the bundled addon, and publishes the matching tagged Forever ZIP. Existing release versions are immutable.

@@ -1,3 +1,4 @@
+local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName and _G.GetRealmName() or '' end
 -- Shared market values. All money is integer copper.
 ForeverMarketTools={}
 local M=ForeverMarketTools
@@ -127,6 +128,7 @@ function M.mailSnapshot(list)
 end
 function M.onActivity(kind,e)
   local a=M.account()
+  if M.recordMarket then M.recordMarket(kind,e) end
   if kind=='posted' and e.auctionId then a.sales[e.auctionId]={name=e.name,id=e.itemId,qty=e.quantity,amount=e.total,at=e.at,deposit=e.deposit}
   elseif kind=='sale_notice' and e.auctionId then
     local s=a.sales[e.auctionId]

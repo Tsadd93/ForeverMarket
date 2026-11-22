@@ -1,3 +1,4 @@
+local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName and _G.GetRealmName() or '' end
 -- Observes confirmations only; never submits an auction, bid or mail operation.
 if ForeverMarketActivityLoaded then return end
 ForeverMarketActivityLoaded=true
@@ -7,6 +8,14 @@ local received={}
 local ah,mail,attached=false,false,false
 local cells,strip={},nil
 local cursor,elapsed,wake=0,0,0
+-- Older dashboard releases do not accept expired-mail events.
+function ForeverMarketDesktopEvents()
+  local exported={}
+  for _,e in ipairs(ForeverMarketActivity and ForeverMarketActivity.events or {}) do
+    if e.kind~='auction_expired' then exported[#exported+1]=e end
+  end
+  return exported
+end
 local function record(kind,data)
   local db=ForeverMarketActivity
   if not db then return end
@@ -228,7 +237,7 @@ local function initialize()
 end
 function ForeverMarketActivityStatus()
   initialize();record('session',{name='Connection test'});wake=GetTime()+30
-  print('|cff65dfc0Forever Market 0.5.2:|r '..#ForeverMarketActivity.events..' events. Sending connection test for 30 seconds.'..(#skipped>0 and (' Unsupported events: '..table.concat(skipped,', ')) or ''))
+  print('|cff65dfc0Forever Market:|r '..#ForeverMarketActivity.events..' events. Sending connection test for 30 seconds.'..(#skipped>0 and (' Unsupported events: '..table.concat(skipped,', ')) or ''))
 end
 for _,ev in ipairs({'PLAYER_LOGIN','AUCTION_HOUSE_SHOW','AUCTION_HOUSE_CLOSED',
   'CHAT_MSG_SYSTEM','UI_ERROR_MESSAGE','MAIL_SHOW','MAIL_CLOSED','MAIL_INBOX_UPDATE','PLAYER_MONEY','PLAYER_LOGOUT','BAG_UPDATE_DELAYED'}) do if not pcall(f.RegisterEvent,f,ev) then skipped[#skipped+1]=ev end end
@@ -274,7 +283,7 @@ f:SetScript('OnEvent',function(_,event,...)
       local prefix=ERR_AUCTION_SOLD_S:match('^(.-)%%s')
       if prefix and prefix~='' and msg:sub(1,#prefix)==prefix then record('sale_notice',{name=msg}) end
     end
-  elseif event=='PLAYER_LOGOUT' then ForeverMarketActivityExport=ForeverMarketJSON(ForeverMarketActivity.events)
+  elseif event=='PLAYER_LOGOUT' then ForeverMarketActivityExport=ForeverMarketJSON(ForeverMarketDesktopEvents())
   elseif event=='MAIL_SHOW' then mail=true;readMail()
   elseif event=='MAIL_CLOSED' then mail=false;mailTake=nil;received={}
   elseif event=='BAG_UPDATE_DELAYED' then
@@ -320,6 +329,6 @@ f:SetScript('OnUpdate',function(_,dt)
   if ah then sellItem=readSellSlot() end
   local db=ForeverMarketActivity
   if db and #db.events>0 and (ah or mail or GetTime()<wake) then
-    cursor=cursor%#db.events+1;draw(db.events[cursor])
+    cursor=cursor%#db.events+1;if db.events[cursor].kind~='auction_expired' then draw(db.events[cursor]) end
   elseif strip then strip:Hide() end
 end)

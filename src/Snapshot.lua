@@ -1,3 +1,4 @@
+local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName and _G.GetRealmName() or '' end
 -- One session snapshot is shared by Market Scan and Market Buy. A second
 -- consumer may join a request already in flight without sending another.
 local api=C_AuctionHouse

@@ -101,13 +101,16 @@ function M.materials()
   for key,n in pairs(a.build) do
     if a.recipes[key] then requirements(a.recipes[key],n,quantities) end
   end
+  if M.restockList then for id,r in pairs(M.restockList()) do quantities[id]=(quantities[id] or 0)+r.keep end end
   return quantities
 end
 function M.missing(id,n)
   local orders=ForeverMarketTradingFund and ForeverMarketTradingFund().itemOrders
   local pending=0
   for _,o in pairs(orders or {}) do if o.craft and o.id==id then pending=pending+o.n end end
-  return math.max(0,n-M.bagCount(id)-(M.account().transit[id] or 0)-pending)
+  local need=math.max(0,n-M.bagCount(id)-(M.account().transit[id] or 0)-pending)
+  if M.account().useTransfers and M.transferPlan then local _,buy=M.transferPlan(id,need);return buy end
+  return need
 end
 function M.estimate(r,batches)
   if r.issue then return nil,r.issue end
@@ -211,17 +214,19 @@ function M.completed(spell)
   end
 end
 -- A material purchase must still fit the fund at its current quote.
-function M.startMaterial(id)
+function M.startMaterial(id,order)
   local f=ForeverMarketTradingFund()
   if f.pending then return nil,'Waiting for the previous purchase' end
-  local n=M.missing(id,M.materials()[id] or 0)
-  local max=M.cost(id,n)
+  local n=order and order.n or M.missing(id,M.materials()[id] or 0)
+  local max=order and order.cap*n or M.cost(id,n)
+  local rule=M.restockList and M.restockList()[id]
+  if rule and rule.cap>0 and max and max>rule.cap*n then return nil,"Above shopping list price limit" end
   if n==0 or not max then return nil,'Refresh market supply' end
   if max>ForeverMarketSpendable(true) then return nil,'Insufficient trading cash' end
   local item=C_AuctionHouse.GetItemKeyInfo(C_AuctionHouse.MakeItemKey(id))
   if not item then return nil,'Item data loading' end
   M.cancelMaterial()
-  M.quote={id=id,n=n,max=max,at=GetTime()}
+  M.quote={id=id,n=n,max=max,at=GetTime(),direct=order~=nil}
   if item.isCommodity then C_AuctionHouse.StartCommoditiesPurchase(id,n)
   else
     local key=C_AuctionHouse.MakeItemKey(id)
@@ -240,7 +245,7 @@ function M.materialOffer(key)
   for i=1,C_AuctionHouse.GetNumItemSearchResults(key) do
     local r=C_AuctionHouse.GetItemSearchResultInfo(key,i)
     if r and r.itemKey and r.itemKey.itemID==q.id and (r.quantity or 1)==1 and not r.containsOwnerItem and not r.containsAccountItem and
-       r.buyoutAmount and r.buyoutAmount>0 and r.buyoutAmount<=(M.cost(q.id,1) or 0) and (not best or r.buyoutAmount<best.buyoutAmount) then best=r end
+       r.buyoutAmount and r.buyoutAmount>0 and r.buyoutAmount<=(q.direct and q.max or M.cost(q.id,1) or 0) and (not best or r.buyoutAmount<best.buyoutAmount) then best=r;if q.direct then q.link=r.itemLink or (C_AuctionHouse.GetItemSearchResultItemLink and C_AuctionHouse.GetItemSearchResultItemLink(key,i)) end end
   end
   return best
 end
@@ -248,13 +253,15 @@ function M.confirmMaterial()
   local q=M.quote
   if not q or not q.total then return nil,'Awaiting live price' end
   local f=ForeverMarketTradingFund()
+  local rule=M.restockList and M.restockList()[q.id]
+  if rule and rule.cap>0 and q.total>rule.cap*(q.key and 1 or q.n) then M.cancelMaterial();return nil,"Above shopping list price limit" end
   if f.pending or GetTime()-q.at>=9 or q.total>q.max or q.total>ForeverMarketSpendable(true)
-      or q.n~=M.missing(q.id,M.materials()[q.id] or 0) then
+      or not q.direct and q.n~=M.missing(q.id,M.materials()[q.id] or 0) then
     M.cancelMaterial();return nil,'Fund, quantity or price changed'
   end
   for key,n in pairs(M.account().build) do
     local r=M.account().recipes[key]
-    if (M.inputs(r,n) or {})[q.id] then
+    if not q.direct and (M.inputs(r,n) or {})[q.id] then
       local e=M.estimate(r,n)
       if not e or e.profit<=0 or e.extra<=0 then M.cancelMaterial();return nil,'Review craft profitability' end
     end

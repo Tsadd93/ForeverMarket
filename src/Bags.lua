@@ -1,3 +1,4 @@
+local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName and _G.GetRealmName() or '' end
 -- Native bag decoration; never sells, moves or locks an item.
 local enabled=true
 local badges=setmetatable({},{__mode='k'})

@@ -1,0 +1,57 @@
+name: Release Forever Market addon
+on:
+  push:
+    branches: [main]
+    paths:
+      - ForeverMarket.toc
+      - src/**
+      - package.py
+      - .github/workflows/release-addon.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: forever-market-addon-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and validate the addon
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^## Version: //p' ForeverMarket.toc | tr -d '\r')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          python3 package.py
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lua5.1
+          for suite in tests/*.lua; do lua5.1 "$suite"; done
+          zip="dist/ForeverMarket-$version-forever.zip"
+          unzip -t "$zip"
+          unzip -p "$zip" ForeverMarket/Market.lua | luac5.1 -p -
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+      - name: Publish the version in the TOC
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.build.outputs.tag }}
+          ZIP: ${{ steps.build.outputs.zip }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code origin "refs/tags/$TAG" >/dev/null; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+            if [[ $(git rev-list -1 "$TAG") != "$GITHUB_SHA" ]]; then
+              echo "::error::This version belongs to an earlier commit. Bump the addon version in ForeverMarket.toc."
+              exit 1
+            fi
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release download "$TAG" --pattern "$(basename "$ZIP")" --dir "$RUNNER_TEMP/verify"
+            cmp "$ZIP" "$RUNNER_TEMP/verify/$(basename "$ZIP")"
+          else
+            gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "Forever Market $TAG" --generate-notes --latest
+          fi
