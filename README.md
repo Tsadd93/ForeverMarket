@@ -6,6 +6,12 @@ An auction house and profession addon for World of Warcraft Forever. Scan your r
 
 Select **WoW Forever**, open **Get Addons → Install from URL**, and paste **https://github.com/drixthegamer/ForeverMarket**. For a manual install, extract the release ZIP into your Forever client's Interface/AddOns folder.
 
+## Optional Windows dashboard
+
+[Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.
+
+To connect your character, run an auction scan in WoW, then use `/fm export` and `/reload`. In the dashboard’s **Connections** tab, choose your TSM region, realm type, and faction and click **Link to selected market**. Live TSM pricing requires internet access.
+
 ## First session
 
 1. Open a learned profession window to capture recipes on the current character.
