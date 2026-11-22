@@ -1,0 +1,39 @@
+name: Desktop release verification
+on:
+  push:
+    branches: [qa/desktop-080-windows]
+permissions:
+  contents: write
+jobs:
+  portable:
+    runs-on: windows-2025
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download and verify staged release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download desktop-v0.8.0 --pattern '*.exe' --dir releases
+          if ($LASTEXITCODE) {exit $LASTEXITCODE}
+          $file=(Get-Item releases/*.exe).FullName
+          if ((Get-FileHash $file).Hash -ne 'C71A2C57D31CAC05E5C3C0C26ABF81CE00CC51BF1E2B115BA5F56E70DBB726AC') {throw 'Download checksum mismatch'}
+          7z x $file "-o$env:RUNNER_TEMP/runtimes" -r WebView2.exe NetFramework.exe -y
+          if ($LASTEXITCODE) {exit $LASTEXITCODE}
+          $deps=@(Get-ChildItem "$env:RUNNER_TEMP/runtimes" -Recurse -Filter '*.exe')
+          if ($deps.Count -ne 2) {throw 'Missing offline installers'}
+          foreach($dep in $deps) {
+            $sig=Get-AuthenticodeSignature $dep.FullName
+            if($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation,'){throw "Invalid signature: $($dep.Name)"}
+          }
+          $net=Get-ItemPropertyValue 'HKLM:/SOFTWARE/Microsoft/NET Framework Setup/NDP/v4/Full' Release
+          Write-Output "Windows $( [Environment]::OSVersion.Version ) has .NET Framework release $net"
+          if ($net -lt 528040){throw 'OS baseline missing framework'}
+          $wv=$deps | Where-Object Name -eq WebView2.exe
+          $p=Start-Process $wv.FullName -ArgumentList '/silent /install' -PassThru -Wait
+          Write-Output "Bundled Microsoft WebView2 offline installer exit: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0){throw 'WebView2 offline installer failed'}
+      - name: Verify packaged UI, live TSM link, addon data and relaunch
+        run: ./qa-portable.ps1
