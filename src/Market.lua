@@ -1,0 +1,169 @@
+-- Conservative resale assumptions shared by both auction tabs.
+function ForeverMarketPostPrice(bulkAsk)
+  return math.max(1,bulkAsk-2)
+end
+function ForeverMarketMarginBP()
+  return ForeverMarketDB and ForeverMarketDB.buyTargetBP or ForeverMarketRisk and ForeverMarketRisk.marginBP or 2000
+end
+function ForeverMarketKeepBP()
+  return 10000-(ForeverMarketDB and ForeverMarketDB.pricing and ForeverMarketDB.pricing.cutBP or ForeverMarketRisk and ForeverMarketRisk.cutBP or 500)
+end
+function ForeverMarketSaleNet(gross)
+  return math.floor(gross*ForeverMarketKeepBP()/10000)
+end
+-- The successful-sale invoice returns the posting deposit. Budget for it
+-- upfront; expense only the configured allowance for failed listings.
+function ForeverMarketDepositLoss(quantity)
+  return quantity*math.ceil(ForeverMarketDB and ForeverMarketDB.pricing and ForeverMarketDB.pricing.lostDepositPerUnit or ForeverMarketRisk and ForeverMarketRisk.lostDepositPerUnit or 0)
+end
+function ForeverMarketFundMinimum(cost,quantity,deposit,stack)
+  if quantity<=0 then return 0 end
+  return math.ceil((math.ceil(cost*stack/quantity)+ForeverMarketDepositLoss(stack))*10000/(ForeverMarketKeepBP()*stack))
+end
+-- Ignore instance GUID and viewer level; keep the sale-relevant variant fields.
+function ForeverMarketVariant(k,link)
+  if not k or not link then return end
+  local pet=link:match('battlepet:([^|]+)')
+  if pet then
+    local species,level,quality,health,power,speed=pet:match('^(%d+):(%d+):(%d+):(%d+):(%d+):(%d+)')
+    if species then return table.concat({'pet',species,level,quality,health,power,speed},':') end
+    return
+  end
+  local raw=link:match('item:([^|]+)')
+  if not raw then return end
+  local parts={}
+  for part in (raw..':'):gmatch('(.-):') do parts[#parts+1]=part end
+  for i=#parts+1,10 do parts[i]='' end
+  parts[8]='';parts[9]='';parts[10]=''
+  while #parts>1 and parts[#parts]=='' do table.remove(parts) end
+  return table.concat({k.itemID,k.itemLevel or 0,k.itemSuffix or 0,table.concat(parts,':')},'/')
+end
+function ForeverMarketResults(panel,top,columns)
+  local inset=CreateFrame('Frame',nil,panel,'InsetFrameTemplate')
+  inset:SetPoint('TOPLEFT',0,-top);inset:SetPoint('BOTTOMRIGHT',0,2)
+  inset:SetFrameLevel(panel:GetFrameLevel());inset:EnableMouse(false)
+  local bg=inset:CreateTexture(nil,'BACKGROUND',nil,1)
+  bg:SetPoint('TOPLEFT',4,-4);bg:SetPoint('BOTTOMRIGHT',-4,4)
+  if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo('auctionhouse-background-index') then
+    bg:SetAtlas('auctionhouse-background-index')
+  else bg:SetTexture('Interface\\FrameGeneral\\UI-Background-Marble') end
+  for i,c in ipairs(columns) do
+    local h=CreateFrame('Frame',nil,panel,'BackdropTemplate')
+    h:SetPoint('TOPLEFT',c[2],-top)
+    if columns[i+1] then h:SetWidth(columns[i+1][2]-c[2]) else h:SetPoint('RIGHT',panel,'RIGHT',-4,0) end
+    h:SetHeight(22)
+    h:SetBackdrop({bgFile='Interface\\Buttons\\WHITE8X8',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',edgeSize=8,insets={left=2,right=2,top=2,bottom=2}})
+    h:SetBackdropColor(.15,.13,.11,.96);h:SetBackdropBorderColor(.58,.55,.49,.85)
+    local title=h:CreateFontString(nil,'OVERLAY','GameFontNormalSmall')
+    title:SetPoint('LEFT',8,0);title:SetTextColor(1,.97,.87);title:SetText(c[1])
+  end
+end
+function ForeverMarketHover(parent,y,width,row)
+  local hit=CreateFrame('Button',nil,parent)
+  hit:SetPoint('TOPLEFT',3,y);hit:SetSize(width,24)
+  hit:SetHighlightTexture('Interface\\QuestFrame\\UI-QuestTitleHighlight','ADD')
+  hit:SetFrameLevel(parent:GetFrameLevel())
+  hit:SetScript('OnEnter',function(self)
+    if row.itemRef then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink(row.itemRef);GameTooltip:Show() end
+  end)
+  hit:SetScript('OnLeave',function()GameTooltip:Hide()end)
+  return hit
+end
+function ForeverMarketRowIcon(id,text)
+  local icon=id and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)
+  return (icon and ('|T'..icon..':17:17|t  ') or '')..(text or ''):gsub('%[([^%]]+)%]','%1')
+end
+local coinFormat='%s%d|TInterface\\MoneyFrame\\UI-GoldIcon:12:12|t  %d|TInterface\\MoneyFrame\\UI-SilverIcon:12:12|t  %d|TInterface\\MoneyFrame\\UI-CopperIcon:12:12|t'
+function ForeverMarketCoins(value)
+  local copper=math.floor(math.abs(value or 0))
+  return string.format(coinFormat,(value or 0)<0 and '-' or '',math.floor(copper/10000),math.floor(copper/100)%100,copper%100)
+end
+local function quote(s)
+  return '"' .. tostring(s):gsub('[%z\1-\31\\"]', function(c)
+    if c == '\\' then return '\\\\' end
+    if c == '"' then return '\\"' end
+    return string.format('\\u%04x', string.byte(c))
+  end) .. '"'
+end
+local function json(v)
+  if type(v) == 'string' then return quote(v) end
+  if type(v) == 'number' then return tostring(v) end
+  if type(v) == 'boolean' then return v and 'true' or 'false' end
+  if type(v) ~= 'table' then return 'null' end
+  local a = {}
+  if #v > 0 then
+    for _, x in ipairs(v) do a[#a+1] = json(x) end
+    return '[' .. table.concat(a, ',') .. ']'
+  end
+  for k,x in pairs(v) do a[#a+1] = quote(k) .. ':' .. json(x) end
+  return '{' .. table.concat(a, ',') .. '}'
+end
+ForeverMarketJSON=json
+local function market()
+  return GetRealmName() .. '|' .. UnitFactionGroup('player')
+end
+local function info(key)
+  local species=tonumber(key:match('^p:(%d+)$'))
+  if species then
+    local name=C_PetJournal and C_PetJournal.GetPetInfoBySpeciesID(species)
+    return 82800,name or ('Pet '..species),17
+  end
+  local id = tonumber(key) or tonumber(key:match('^gr:(%d+):')) or tonumber(key:match('^g:(%d+):'))
+  if not id then return nil end
+  local get = C_Item and C_Item.GetItemInfo or GetItemInfo
+  local name,link,quality,level,req,typ,sub,stack,slot,texture,vendor,class = get(id)
+  if not class then
+    local instant=C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
+    if instant then class=select(6,instant(id)) end
+  end
+  return id, name or ('Item ' .. id), class
+end
+local function export(quiet)
+  if not ForeverMarketMigrate() then return end
+  local rows, count = {}, 0
+  local live = ForeverMarketDB and ForeverMarketDB[market()] or {}
+  for key,d in pairs(ForeverMarketHistory()) do
+    if type(d)=='table' and type(d.h)=='table' then
+      key=tostring(key)
+      local id,name,class=info(key)
+      if id then
+        local history={}
+        for day,high in pairs(d.h) do
+          local stamp=d.stamp[day] or tonumber(day)*86400
+          if stamp > time()-30*86400 then
+            history[#history+1]={at=stamp,low=(d.l and d.l[day]) or high,high=high,quantity=d.a and d.a[day]}
+          end
+        end
+        rows[#rows+1]={key=key,id=id,name=name,class=class,history=history,live=live[key]}
+        count=count+1
+      end
+    end
+  end
+  ForeverMarketExport=json({version=1,realm=GetRealmName(),faction=UnitFactionGroup('player'),region=GetCurrentRegion(),exportedAt=time(),gold=GetMoney(),rows=rows,activity=ForeverMarketActivity and ForeverMarketActivity.events})
+  if not quiet then print('|cff65dfc0Forever Market:|r Exported '..count..' items. Type /reload to save for the desktop app.') end
+end
+local f=CreateFrame('Frame')
+f:RegisterEvent('PLAYER_LOGIN'); f:RegisterEvent('AUCTION_HOUSE_SHOW'); f:RegisterEvent('AUCTION_HOUSE_CLOSED'); f:RegisterEvent('PLAYER_LOGOUT')
+f:SetScript('OnEvent',function(_,event)
+  if event=='PLAYER_LOGIN' then ForeverMarketMigrate()
+  elseif event=='AUCTION_HOUSE_CLOSED' then export(true)
+  elseif event=='PLAYER_LOGOUT' then export(true) end
+end)
+SLASH_FOREVERMARKET1='/fm'
+SlashCmdList.FOREVERMARKET=function(msg)
+  msg=(msg or ''):lower():match('^%s*(.-)%s*$')
+  if msg=='scan' and ForeverMarketScan then ForeverMarketScan()
+  elseif msg=='' or msg=='export' then export(false)
+  elseif msg=='scanstatus' then
+    local r=ForeverMarketDB and ForeverMarketDB.lastBuyScan
+    if not r then print('Forever Market: no Buy scan recorded yet.');return end
+    print(('Forever Market: %s · %s · %ds · %g%% target'):format(r.source,r.state or 'starting',r.elapsed or 0,r.target/100))
+    print(('%d eligible · %d screened · %d detail requests · %d checked · %d unanswered'):format(r.candidates or 0,r.screened or 0,r.detailRequests or 0,r.checked or 0,r.unanswered or 0))
+    if r.snapshotStatus then print('Snapshot: '..r.snapshotStatus) end
+    if r.item then print('Current item ID: '..r.item) end
+  elseif msg=='status' and ForeverMarketActivityStatus then ForeverMarketActivityStatus()
+  elseif msg=='bags' or msg=='bags on' or msg=='bags off' then
+    if ForeverMarketBagToggle then ForeverMarketBagToggle(msg~='bags off')
+    else print('Forever Market: bag module unavailable. Check startup messages.') end
+  else print('Forever Market: /fm scan, /fm scanstatus, /fm bags, /fm bags off, /fm status, /fm export') end
+end
