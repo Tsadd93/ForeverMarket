@@ -16,6 +16,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $deadline=(Get-Date).AddMinutes(8)
+          do {
+            $stage=gh api repos/drixthegamer/ForeverMarket/releases/454361272/assets --jq '.[0].state'
+            if($stage -eq 'uploaded'){break}
+            Start-Sleep -Seconds 10
+          }until((Get-Date) -gt $deadline)
           gh release download desktop-v0.8.0 --pattern '*.exe' --dir releases
           if ($LASTEXITCODE) {exit $LASTEXITCODE}
           $file=(Get-Item releases/*.exe).FullName
