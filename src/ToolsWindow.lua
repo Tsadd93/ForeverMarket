@@ -99,9 +99,57 @@ local function imports()
     local p,err=M.previewTSM(second:GetText());preview=p;if p then p.raw=field:GetText();page=1 end;return err
   end)
   if preview then
-    if preview.migration then hint:SetText("Review mapped rules and skips. DBMarket percentages use our realm’s median bulk ask.") end
+    if preview.migration then hint:SetText("Review live rule decisions. Choose a price preset or recipient once for all matching groups.") end
     summary:SetText(preview.kind..' into '..preview.list..' / '..#preview.skipped..' skipped')
-    if #preview.skipped>0 then
+    if preview.migration then
+      local p=preview
+      action(3,'Review choices',function()p.choices=not p.choices;p.showSkipped=false;page=1 end)
+      action(4,'Show skipped',function()p.showSkipped=not p.showSkipped;p.choices=false;page=1 end)
+      if p.showSkipped then
+        for _,v in ipairs(p.skipped) do add('Needs a choice',v) end
+        if #p.skipped==0 then add('Ready','All settings recognized.') end
+        return
+      end
+      if next(p.marketSources) then
+        add(p.localPrices and 'Local preset selected' or 'Preset suggested',p.localPrices and 'Use local median bulk asks for imported market prices.' or 'Keep original sources. Missing required evidence holds the action.',p.localPrices and 'Use original' or 'Use local',function()
+          p.localPrices=not p.localPrices
+        end)
+      end
+      for from,to in pairs(p.recipients) do
+        add(to and 'Ready' or 'Needs a choice',from..' → '..(to or 'Hold outgoing mail'),'Choose',function()p.pick=from;p.choices=true;page=1 end)
+      end
+      if p.choices then
+        local function rebuild()
+          local updated=p.rebuild();updated.root=p.root;updated.raw=p.raw;updated.localPrices=p.localPrices
+          for from in pairs(updated.recipients) do if p.recipients[from]~=nil then updated.recipients[from]=p.recipients[from] end end
+          preview=updated;page=1
+        end
+        if p.formulaPick then
+          local key=p.formulaPick;local sell=p.formulaChoices[key]=='sell'
+          add('Keep original rule','Hold while this formula cannot be evaluated.','Hold',function()p.replacements[key]=nil;rebuild()end)
+          if sell then add('Cover crafting costs','Use 120% of the current known material cost.','Select',function()p.replacements[key]='120% crafting';rebuild()end) end
+          add(sell and 'Local posting floor' or 'Local buying ceiling',sell and 'Use the realm median bulk ask.' or 'Pay up to 80% of the realm median bulk ask.','Select',function()
+            p.replacements[key]=sell and 'fmrealm' or '80% fmrealm';rebuild()
+          end)
+        elseif p.operationPick then
+          local key=p.operationPick
+          local function choose(name)
+            p.overrides[key]=name
+            rebuild()
+          end
+          add('Use imported order','Evaluate observable conditions. Hold if ambiguous.','Use order',function()choose(nil)end)
+          for _,name in ipairs(p.operationSets[key]) do add(name,'Use only this operation for this assignment.','Select',function()choose(name)end) end
+        elseif p.pick then
+          for _,to in ipairs(M.destinations()) do add(to,'Use for '..p.pick,'Select',function()p.recipients[p.pick]=to;p.pick=nil;p.choices=false end) end
+          add('Hold outgoing mail','Leave this route unresolved.','Hold',function()p.recipients[p.pick]=false;p.pick=nil;p.choices=false end)
+        else
+          for key in pairs(p.formulaChoices) do add(p.replacements[key] or 'Needs a choice',key,'Preset',function()p.formulaPick=key;page=1 end) end
+          for key in pairs(p.operationSets) do add(p.overrides[key] or 'Imported order',key,'Choose',function()p.operationPick=key;page=1 end) end
+          add('Review items','See the effect on each item.','Items',function()p.choices=false end)
+        end
+        return
+      end
+    elseif #preview.skipped>0 then
       action(3,preview.showSkipped and 'Show items' or 'Show skipped',function()preview.showSkipped=not preview.showSkipped;page=1 end)
       if preview.showSkipped then for _,v in ipairs(preview.skipped) do add('Needs review',v) end;return end
     end
@@ -109,12 +157,36 @@ local function imports()
     for id,n in pairs(preview.items) do
       local path=preview.paths and preview.paths[id]
       if path then
-        local settings={};for k,v in pairs(preview.rules[path]) do settings[#settings+1]=k..' '..((k=='cap' or k=='fixedFloor') and coins(v) or tostring(v)) end
-        local rule=preview.rules[path]
-        table.sort(settings)
+        local rule=preview.rules[path];local p=preview
         add(function()return itemName(id)end,function()
-          local floor,why=M.policyFloor(id,true,rule)
-          return path..' / '..(#settings>0 and table.concat(settings,', ') or 'Items only')..(why and (' / '..why) or floor>0 and (' / floor '..coins(floor)) or '')
+          local parts={path};local flags={choice=p.reviewPaths[path]}
+          if rule.mailAlias and not p.recipients[rule.mailAlias] or rule.mailHold then flags.choice=true end
+          for _,side in ipairs({'sell','buy'}) do
+            local seq=rule.program and rule.program[side]
+            if seq then
+              local evidence={}
+              local price,why,op=M.importPrice(id,seq,p.localPrices,evidence)
+              if evidence.crafting then parts[#parts+1]='Materials '..coins(evidence.crafting) end
+              for _,step in ipairs(seq) do if step.name==op and step.source then parts[#parts+1]=step.source;break end end
+              local snap=ForeverMarketReadySnapshot and ForeverMarketReadySnapshot()
+              local book=snap and snap.books[id]
+              local ask=book and (side=='buy' and book.low or book.floorPrice and (ForeverMarketDB.matchBulk and book.floorPrice or ForeverMarketPostPrice(book.floorPrice)))
+              local label=side=='sell' and 'Post floor' or 'Buy ceiling'
+              local n=price and (side=='sell' and math.ceil(price) or math.floor(price))
+              if not price then
+                if why and why:match('^Missing db') and not p.localPrices then flags.preset=true else flags.choice=true end
+              end
+              local hold=n and ask and (side=='sell' and ask<n or side=='buy' and ask>n)
+              parts[#parts+1]=label..' / '..(op or seq[1].name)..' / '..(n and (coins(n)..(ask and (' vs ask '..coins(ask)..(hold and ' / Hold' or ' / Price qualifies')) or ' / no current ask')) or ('Hold: '..tostring(why)))
+              if next(p.marketSources) then
+                local other=M.importPrice(id,seq,not p.localPrices)
+                if price and other and other~=price then parts[#parts+1]=(p.localPrices and 'Original ' or 'Local ')..coins(other) end
+              end
+            end
+          end
+          for k,v in pairs(rule) do if k~='program' then parts[#parts+1]=k..' '..tostring(v) end end
+          table.insert(parts,1,flags.choice and 'Needs a choice' or flags.preset and 'Preset suggested' or 'Ready')
+          return table.concat(parts,' / ')
         end)
       else add(itemName(id),'Keep '..n) end
     end

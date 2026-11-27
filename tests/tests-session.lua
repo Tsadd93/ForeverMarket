@@ -17,7 +17,7 @@ local snap={books={[10]={low=40}}}
 ForeverMarketReadySnapshot=function()return snap end
 ForeverMarketHistory=function()return {} end
 C_Item={GetItemNameByID=function(id)return id==10 and 'Ore' or 'Gear'end}
-dofile('src/TradeDesk.lua');dofile('src/Session.lua');dofile('src/SessionViews.lua');dofile('src/Migration.lua')
+dofile('src/TradeDesk.lua');dofile('src/Session.lua');dofile('src/SessionViews.lua');dofile('src/PriceRules.lua');dofile('src/Migration.lua')
 local actualPrint=print
 print=function()observed=observed+1 end
 assert(M.setPriceWatch(10,40));M.monitorPrices(true)
@@ -42,9 +42,11 @@ local ops={Auctioning={Post={minPrice='max(120% crafting, 2g)',duration=24,keepQ
 local raw=ForeverMarketLibSerialize:Serialize('TSM_EXPORT',2,'Gear',paths,{},links,ops,{})
 local packed=ForeverMarketLibDeflate:EncodeForPrint(ForeverMarketLibDeflate:CompressDeflate(raw))
 local p=assert(M.decodeGroup(packed,'Imported'))
-assert(not next(actor.desk.groups) and #p.skipped==3 and p.rules['Gear`Ore'].fixedFloor==20000)
+assert(not next(actor.desk.groups) and #p.skipped==3 and p.rules['Gear`Ore'].program.sell[1].tree)
 M.applyMigration(p)
-assert(actor.desk.groups[10].cap==5000 and actor.desk.groups[11].craftPct==120 and actor.desk.groups[11].minBatch==2)
+assert(M.groupPurchaseAllowed(10,M.group(10),5000,true))
+assert(not M.groupPurchaseAllowed(10,M.group(10),5001,true))
+assert(actor.desk.groups[11].minBatch==2)
 assert(M.session().groupPaths[10]=='Gear`Ore' and actor.desk.posting[10].duration==2)
 local legacy=ForeverMarketAceSerializer:Serialize({groupExport='group:Gear,i:11,group:Gear`Ore,i:10',groupOperations=links,operations=ops})
 assert(M.decodeGroup(legacy,'Another').rules.Gear.reserve==4)

@@ -175,6 +175,12 @@ end
 local floors={}
 function M.policyFloor(id,force,preview)
   local group=preview or M.group(id)
+  local rules=M.importedRules and M.importedRules(group)
+  if rules and rules.sell then
+    local n,why=M.liveImportPrice(id,rules,'sell',force or preview~=nil)
+    if not n then return 0,why end
+    return math.ceil(n)
+  end
   if not group or (group.craftPct or 0)+(group.realmPct or 0)==0 then return group and group.fixedFloor or 0 end
   local cached=floors[id]
   if not force and cached and cached.group==group and GetTime()-cached.at<3 then return cached.floor,cached.why end
@@ -230,15 +236,18 @@ function M.checkPostPolicy(id,qty,unit,force,incoming)
   local floor,why=M.policyFloor(id,force)
   if why then return why end
   if unit and unit<floor then return 'Posting floor changed. Review the price.' end
-  if (g.reserve or 0)>0 and M.bagCount(id)+(incoming or 0)-qty<g.reserve then return 'Group bag reserve' end
-  if (g.postCap or 0)>0 then
+  local fields=M.operationFields and M.operationFields(id,g,force) or {}
+  local reserve=fields.reserve or g.reserve or 0
+  local cap=fields.postCap or g.postCap or 0
+  if reserve>0 and M.bagCount(id)+(incoming or 0)-qty<reserve then return 'Group bag reserve' end
+  if cap>0 then
     local api=C_AuctionHouse
     if not api.GetNumOwnedAuctions or not api.GetOwnedAuctionInfo or api.HasFullOwnedAuctionResults and not api.HasFullOwnedAuctionResults() then return 'Waiting for owned listings' end
     local posted=0
     for i=1,api.GetNumOwnedAuctions() do local r=api.GetOwnedAuctionInfo(i)
       if r and r.status==0 and r.itemKey and r.itemKey.itemID==id then posted=posted+(r.quantity or 1) end
     end
-    if posted+qty>g.postCap then return 'Group listed-unit cap' end
+    if posted+qty>cap then return 'Group listed-unit cap' end
   end
 end
 

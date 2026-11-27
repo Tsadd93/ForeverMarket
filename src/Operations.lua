@@ -198,7 +198,7 @@ function M.shipments()
       if item and not item.isBound and not item.isLocked and not protected(item.itemID) then
         local id=item.itemID;local r=ops.routes[id];local to=r and r.to or ops.seller
         local _,_,_,_,_,_,_,_,_,_,_,_,_,bind=C_Item.GetItemInfo(item.hyperlink or id)
-        if to and to~=recipient(M.account()) and to~=UnitName('player') and bind~=nil and bind~=4 and bind~=1 then
+        if to and not (M.group and (M.group(id) or {}).mailHold) and to~=recipient(M.account()) and to~=UnitName('player') and bind~=nil and bind~=4 and bind~=1 then
           local g=M.group and M.group(id)
           local keep=math.max(r and r.keep or 0,needs[id] or 0,g and g.reserve or 0)
           local n=math.min(item.stackCount or 1,math.max(0,M.bagCount(id)-keep))
@@ -216,7 +216,7 @@ function M.shipments()
 end
 function M.bankDispatchTo(id)
   local route=realmOps().routes[id]
-  if route and not protected(id) and route.to~=recipient(M.account()) and route.to~=UnitName('player') then return route.to end
+  if route and not (M.group and (M.group(id) or {}).mailHold) and not protected(id) and route.to~=recipient(M.account()) and route.to~=UnitName('player') then return route.to end
 end
 function M.destinations()
   local list={}

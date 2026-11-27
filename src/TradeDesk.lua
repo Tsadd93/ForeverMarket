@@ -5,7 +5,10 @@ local function prefs()
   return a.desk
 end
 function M.postOptions(id)
-  return prefs().posting[id] or {}
+  local base=prefs().posting[id] or {}
+  local fields=M.operationFields and M.operationFields(id,prefs().groups[id])
+  if fields then return {duration=fields.duration or base.duration,size=fields.size or base.size} end
+  return base
 end
 function M.setPosting(id,size,duration)
   local opt=M.postOptions(id)

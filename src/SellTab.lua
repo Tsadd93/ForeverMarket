@@ -140,7 +140,10 @@ end
 local function price(q,s)
   local p=basePrice(q,s)
   if p and s and ForeverMarketTools and ForeverMarketTools.policyFloor then
-    local floor=ForeverMarketTools.policyFloor(s.k.itemID)
+    local m=ForeverMarketTools
+    local rules=m.importedRules and m.importedRules(m.group(s.k.itemID))
+    if rules and rules.sell then return p end
+    local floor=m.policyFloor(s.k.itemID)
     if floor then return math.max(p,floor) end
   end
   return p
