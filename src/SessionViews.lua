@@ -169,9 +169,15 @@ function M.renderSessionPage(mode,ui)
   elseif mode=='Comparison' then
     local f=ForeverMarketTradingFund();local r=(f.sessions or {})[ui.compareID]
     if not r or not r.ids then summary:SetText('Complete a benchmark first.');return end
-    hint:SetText('Paste the other addon’s qualifying item IDs at left (or none). Enter elapsed seconds at right.')
+    hint:SetText('Left: matching IDs or none. Right: total seconds, optionally / first deal seconds / unanswered.')
     action(1,'Record comparison',function()
-      local seconds=tonumber(second:GetText());local raw=field:GetText()
+      local timing=second:GetText()
+      local total,first,missed=timing:match('^%s*([%d.]+)%s*/%s*([%d.%-]+)%s*/%s*(%d+)%s*$')
+      local seconds=tonumber(total or timing);local raw=field:GetText()
+      local firstSeconds=tonumber(first);local unanswered=tonumber(missed)
+      if total and (not seconds or first~='-' and (not firstSeconds or firstSeconds<0 or firstSeconds>seconds) or unanswered>#r.ids) then
+        return 'Use total / first deal (or -) / unanswered. Times are in seconds.'
+      end
       if not seconds or seconds<0 or seconds>86400 or raw=='' then return 'Enter results and elapsed seconds.' end
       local allowed,other={},{}
       for _,id in ipairs(r.ids) do allowed[id]=true end
@@ -183,7 +189,9 @@ function M.renderSessionPage(mode,ui)
         end
         if not next(other) then return 'Enter IDs or none.' end
       end
-      r.comparison={elapsed=seconds,found=other}
+      if first=='-' and next(other) then return 'Enter first-deal seconds, or use total seconds alone.' end
+      if firstSeconds and not next(other) then return 'A first-deal time requires a matching item.' end
+      r.comparison={elapsed=seconds,found=other,first=firstSeconds,missed=unanswered}
     end)
     action(2,'Copy search list',function()
       local names={};for _,id in ipairs(r.ids) do names[#names+1]='"'..name(id)..'"' end
@@ -193,6 +201,8 @@ function M.renderSessionPage(mode,ui)
     summary:SetText('Compare '..#r.ids..' sampled items / fund '..coins(r.cash)..' / target '..(r.target/100)..'%')
     if r.comparison then
       add('Elapsed time',r.elapsed..'s Forever Market / '..r.comparison.elapsed..'s comparison')
+      add('First actionable deal',(r.first and math.floor(r.first)..'s' or 'none')..' FM / '..(r.comparison.first and r.comparison.first..'s' or 'unreported or none'))
+      add('Unanswered checks',(r.missed or 0)..' FM / '..tostring(r.comparison.missed or 'unreported'))
       for _,id in ipairs(r.ids) do
         local fm=(r.found or {})[id];local other=r.comparison.found[id]
         if fm or other then add(name(id),fm and other and 'Both found' or fm and 'Forever Market only' or 'Comparison only / review listing timing') end

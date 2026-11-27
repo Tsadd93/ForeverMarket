@@ -55,7 +55,7 @@ The starter reference covers 100 commodities on the sampled US Horde Forever mar
 
 ## Mixed shopping lists, posting rules and deal alerts
 
-**First-session pricing.** On the sampled US Horde market, tooltips can use 2,950 additional dated base-item references while you build local history. These are display estimates. Starter buy candidates still use the narrower commodity sample and live confirmation. A paid sale shows the gross unit price on your latest qualifying invoice in the last 14 days, identified by character, market and item name. Variants can share an invoice name.
+**First-session pricing.** On the sampled US Horde market, tooltips can use 2,950 additional dated base-item references after your first completed scan. These are display estimates. Starter buy candidates still use the narrower commodity sample and live confirmation. A paid sale shows the gross unit price on your latest qualifying invoice in the last 14 days, identified by character, market and item name. Variants can share an invoice name.
 
 **Shopping.** In Browse, enter a category or search term, price limit, quality and target quantity. Click **Add filter to basket**. In **Tools → Basket**, choose **Run shopping list**. Exact item targets take precedence when rules overlap. Each filter applies its quantity to each matching item. The importer accepts Auctionator level, item-level, price, quality and quantity filters and category paths recognized by the client. Review skipped fields in the preview.
 
@@ -125,7 +125,7 @@ Update the version in `ForeverMarket.toc` alongside addon changes on main. The r
 
 * At the auctioneer, open `/fm watch`, save unit-price ceilings, switch **Quick quotes** on and click **Start watching**. Keep Watches open. When an ask qualifies, the addon stages a single-item gear quote or highlights a commodity for **Get firm quote**. It sounds the ready check if enabled in WoW. Click **Confirm purchase** while the quote is current. Watch speed depends on the number of items, competition and the AH throttle. Market Buy also has a broader market watch.
 * **My Auctions > Manage auctions > Scan cancels** walks your active buyouts in a stable order. **Cancel shown** submits one cancellation. The status shows the competitor's unit price and the deposit at risk. The queue waits for removal, then advances. It skips bids, unknown deposits, positive cancellation fees, mismatched variants, incomplete or unanswered searches and relists below the vendor threshold. A shared book serves consecutive matching listings for up to ten seconds. The result counts removed and skipped listings.
-* Addon authors can declare `## OptionalDeps: ForeverMarket` and call `ForeverMarketAPI.GetPrice(itemIDOrLink, maxAgeSeconds)`. It returns the base item's unit market price in copper, observation timestamp and source, or nil if unavailable. The optional age limit applies to historical and starter estimates too. Linked gear returns a base-item estimate. GECTemplate bridge consumers can use `{forevermarket.price(2589)}` and `{forevermarket.age(2589)}`. Other consumers can add Forever Market to their price-provider list.
+* Addon authors can declare `## OptionalDeps: ForeverMarket` and call `ForeverMarketAPI.GetPrice(itemIDOrLink, maxAgeSeconds)`. It returns the base item's unit market price in copper, observation timestamp and source, or nil if unavailable. The optional age limit applies to historical estimates too. Linked gear returns a base-item estimate. GECTemplate bridge consumers can use `{forevermarket.price(2589)}` and `{forevermarket.age(2589)}`. Other consumers can add Forever Market to their price-provider list.
 * Imported formulas can reference TSM shopping, auctioning and sniper operation prices plus supported purchase, sale, material and vendor sources when the TSM addon supplies them. Missing inputs remain unresolved. Standalone players can keep using native presets and local history.
 
 ### Selling, buying reagents and refreshing prices
@@ -143,3 +143,16 @@ Type `/fm` or `/fm dash` anywhere to open the full dashboard. Overview balances 
 Desktop 0.9.0 includes the latest matching simulation summary with the existing ranked research feed; reload WoW after sync. Modeled profits are distinct from collected gold. Local reports work independently. Auction-house closure schedules a batched export. `/fm export` explicitly requests one; logout or reload saves the latest data.
 
 Market Sell marks a full stack red with **SELL** in the native bags when the vendor pays at least the estimated auction return. Use **Clear vendor marks** beside an open bag to dismiss the current recommendations. A new price check can flag a stack again.
+
+
+## First scan, route planning, and trading evidence (0.24.0)
+
+Open Market Scan and finish one scan at the auctioneer for each market. The dashboard prompts on first use. An already saved complete market snapshot counts. Incomplete scans do not unlock advice. The sampled starter feed can provide a dated tooltip reference after onboarding. A seeded Buy lead also needs a recent local bulk observation and a live check.
+
+Buy rows show fourteen-day sale notices and expirations with mean time to sale where matched postings exist. An item without recorded outcomes shows its observed price days. These figures describe recorded market activity for your account.
+
+In Farming, choose **Routes by gold/hour**. Finished runs with the same route name and zone are combined. Loot is repriced at current local estimates, weighted by total recording time. **Details** shows observed gathering methods, price coverage, actual proceeds and vendor value. A route with missing prices can be underestimated.
+
+In Import, preview a TSM group and click **Compare** beside an item. The original operation expressions are evaluated by TSM when its API is available. Forever Market shows its imported ceiling/floor and the price decision against the same snapshot. Original operation constraints outside the supported translation still require review in Show skipped.
+
+Scan outcomes supports recording a paired external scan. Enter total seconds alone or total / first deal / unanswered, with a dash for no first deal. The [field results](FIELD-RESULTS.md) distinguish captured trading receipts, realized returns, interrupted scans and missing comparisons.

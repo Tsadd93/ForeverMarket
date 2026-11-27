@@ -247,6 +247,10 @@ local function readable(value)
   return not issecretvalue or not issecretvalue(value)
 end
 local function itemValues(tip,id,link,n,bound,k,variant)
+  if ForeverMarketHasScan and not ForeverMarketHasScan() then
+    tip:AddLine('Forever Market: run Market Scan at an auctioneer for realm prices.',.75,.75,.75,true)
+    return
+  end
   local key=k and ForeverMarketHistoryKey(k)
   local post,at,source,bulk=M.prices(id,key,variant)
   if not post and key and key~=tostring(id) then
@@ -260,6 +264,10 @@ local function itemValues(tip,id,link,n,bound,k,variant)
   tip:AddDoubleLine('Forever Market',n and ('Each   /   Stack of '..n) or 'Per item',.4,1,.75,.85,.85,.85)
   local function line(label,each)
     tip:AddDoubleLine(label,money(each)..(n and ('   /   '..money(each*n)) or ''),1,1,1,1,1,1)
+  end
+  if not post and not bound and M.starterReference then
+    local ref,stamp=M.starterReference(id)
+    if ref then tip:AddDoubleLine('Starter reference ('..date('%b %d',stamp)..')',money(ref)) end
   end
   if post and not bound then
     if bulk then line('Observed bulk ask',bulk) end

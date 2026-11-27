@@ -111,7 +111,7 @@ local function create()
     if step=='snapshot' then
       local data,state
       if ForeverMarketSnapshot then data,state=ForeverMarketSnapshot() end
-      if data and data.at>=last then refreshTable(data);finish(('Snapshot ready · %d auction rows · %ds old'):format(data.rows,GetTime()-data.at));return end
+      if data and data.at>=last then if ForeverMarketScanCompleted then ForeverMarketScanCompleted() end;refreshTable(data);finish(('Snapshot ready · %d auction rows · %ds old'):format(data.rows,GetTime()-data.at));return end
       if state=='pending' or state=='throttled' and GetTime()-last<20 then
         local done,total
         if ForeverMarketSnapshotProgress then done,total=ForeverMarketSnapshotProgress() end
@@ -158,5 +158,6 @@ f:SetScript('OnEvent',function(_,ev)
   end
   local n=0
   for k,r in pairs(combined) do ForeverMarketObserve(k,r.price,r.n);n=n+1 end
+  if ForeverMarketScanCompleted then ForeverMarketScanCompleted() end
   refreshTable();finish(('Scan complete / %d item prices saved.'):format(n))
 end)

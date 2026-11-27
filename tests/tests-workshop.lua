@@ -64,6 +64,9 @@ ForeverMarketRisk={cutBP=1200,lostDepositPerUnit=9}
 assert(ForeverMarketKeepBP()==8900 and ForeverMarketDepositLoss(4)==12)
 M.settings().cutBP=500;M.settings().lostDepositPerUnit=0
 print('PASS: standalone defaults, existing target and migration, independent fee settings')
+assert(not ForeverMarketHasScan())
+ForeverMarketScanCompleted()
+assert(ForeverMarketHasScan())
 local book={}
 ForeverMarketDB.__depth={[M.scope()]=book}
 local function depth(id,p,n)

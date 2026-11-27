@@ -111,6 +111,40 @@ local function imports()
       local p=preview
       action(3,'Review choices',function()p.choices=not p.choices;p.showSkipped=false;page=1 end)
       action(4,'Show skipped',function()p.showSkipped=not p.showSkipped;p.choices=false;page=1 end)
+      if p.compareItem then
+        local id=p.compareItem
+        local rule=p.rules[p.paths[id]]
+        ForeverMarketSetItemText(summary,itemName(id)..' / original TSM expression vs imported rule')
+        action(3,'Back to preview',function()p.compareItem=nil;page=1;message:SetText('') end)
+        actions[4]:Hide()
+        local snap=ForeverMarketReadySnapshot and ForeverMarketReadySnapshot()
+        local book=snap and snap.books[id]
+        for _,side in ipairs({'buy','sell'}) do
+          local seq=rule.program and rule.program[side]
+          if seq then
+            local fm,why,chosen,settings=M.importPrice(id,seq,p.localPrices)
+            local ask=book and (side=='buy' and book.low or book.floorPrice and (ForeverMarketDB.matchBulk and book.floorPrice or ForeverMarketPostPrice(book.floorPrice)))
+            local function decision(price)
+              if not price then return 'unresolved' end
+              if not ask then return 'no live ask' end
+              if side=='buy' and ask>price or side=='sell' and ask<price then return 'hold' end
+              return 'price qualifies'
+            end
+            add(side=='buy' and 'Buy ceiling' or 'Minimum post price','Live comparison price: '..coins(ask))
+            for _,step in ipairs(seq) do
+              local price
+              if TSM_API and TSM_API.GetCustomPriceValue and step.original then
+                local ok,value=pcall(TSM_API.GetCustomPriceValue,tostring(step.original),'i:'..id)
+                if ok and type(value)=='number' and value>0 then price=value end
+              end
+              add('TSM: '..step.name,coins(price)..' / '..decision(price)..(step.originalSize and ' / stack '..tostring(step.originalSize) or ''))
+            end
+            add('Forever Market',coins(fm)..' / '..decision(fm)..' / '..(chosen or why or '')..(side=='sell' and ' / stack '..tostring(settings and settings.size or rule.size or 'default') or ''))
+          end
+        end
+        if not (TSM_API and TSM_API.GetCustomPriceValue) then message:SetText('Load TSM to evaluate its original formulas. FM shows its own decisions independently.') end
+        return
+      end
       if p.showSkipped then
         for _,v in ipairs(p.skipped) do add('Needs a choice',v) end
         if #p.skipped==0 then add('Ready','All settings recognized.') end
@@ -193,7 +227,7 @@ local function imports()
           for k,v in pairs(rule) do if k~='program' then parts[#parts+1]=k..' '..tostring(v) end end
           table.insert(parts,1,flags.choice and 'Needs a choice' or flags.preset and 'Preset suggested' or 'Ready')
           return table.concat(parts,' / ')
-        end)
+        end,'Compare',function()p.compareItem=id;page=1 end)
       else add(itemName(id),'Keep '..n) end
     end
     if #preview.skipped>0 then add('Needs review',#preview.skipped..' settings or items. Choose Show skipped for details.') end
@@ -247,7 +281,7 @@ local function chains()
 end
 local showFarmRoutes=false
 local function farming()
-  action(2,showFarmRoutes and 'What to farm' or 'My routes',function()
+  action(2,showFarmRoutes and 'What to farm' or 'Routes by gold/hour',function()
     showFarmRoutes=not showFarmRoutes;page=1
   end)
   if not showFarmRoutes then
@@ -265,15 +299,15 @@ local function farming()
   action(1,M.account().farmActive and 'Stop session' or 'Start session',function()
     return M.account().farmActive and M.farmStop() or M.farmStart(field:GetText())
   end)
-  local list=M.account().farming or {}
-  summary:SetText('Hourly rates / unpriced loot excluded from estimates / mixed items attributed in loot order')
-  local routes={}
-  for i,s in ipairs(list) do
-    local r=routes[s.label] or {elapsed=0,vendor=0,market=0,returned=0,n=0};routes[s.label]=r
-    r.elapsed=r.elapsed+(s.elapsed or math.max(1,time()-s.at));r.n=r.n+1
-    for _,k in ipairs({'vendor','market','returned'}) do r[k]=r[k]+(s[k] or 0) end
+  summary:SetText('Routes ranked by current AH value per hour. Incomplete prices reduce the estimate.')
+  local ranked=M.farmRouteRanks()
+  for _,r in ipairs(ranked) do
+    add(r.name,(r.priced>0 and coins(r.hour) or 'Unknown')..' / hour  |  '..math.floor(r.seconds/60)..' min  |  '..r.runs..' runs','Details',function()
+      local methods={};for method in pairs(r.methods) do methods[#methods+1]=method end;table.sort(methods)
+      return (r.zone or 'Zone unrecorded')..' / '..(#methods>0 and table.concat(methods,', ') or 'Mixed loot')..' / '..r.priced..' of '..r.units..' units priced / paid '..coins(r.paid)..' / vendor '..coins(r.vendor)
+    end)
   end
-  for k,r in pairs(routes) do add(k..' ('..r.n..')','Vendor '..coins(r.vendor*3600/r.elapsed)..' / AH est. '..coins(r.market*3600/r.elapsed)..' / paid '..coins(r.returned*3600/r.elapsed)) end
+  if #ranked==0 then add('Record your first route','Start a session, gather loot, then stop to see your hourly estimate.') end
 end
 local function openAH(key)
   if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end

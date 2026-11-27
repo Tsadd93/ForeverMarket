@@ -66,6 +66,9 @@ local function blacklist()
 end
 local function bags()
   slots={}
+  if ForeverMarketHasScan and not ForeverMarketHasScan() then
+    content:SetHeight(1);caption:SetText('Run Market Scan at this auction house to price your bags.');return
+  end
   for bag=0,(NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
     for slot=1,C_Container.GetContainerNumSlots(bag) do
       local s=inspect(bag,slot)

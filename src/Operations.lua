@@ -372,6 +372,7 @@ for _,id in ipairs({765,2447,2449,785,2450,2452,2453,3820,3355,3356,3357,
   13465,13466,13467,13468}) do farmLeads[id]='Herbalism: gather this herb' end
 
 function M.farmTargets()
+  if ForeverMarketHasScan and not ForeverMarketHasScan() then return {} end
   local leads={}
   for id,lead in pairs(farmLeads) do leads[id]=lead end
   for _,session in ipairs(M.account().farming or {}) do
@@ -405,13 +406,43 @@ function M.farmTargets()
   return rows
 end
 
+function M.farmRouteRanks()
+  local prices,routes,sorted={},{},{}
+  for _,item in ipairs(M.farmTargets()) do prices[item.id]=item.net end
+  for _,s in ipairs(M.account().farming or {}) do
+    if s.elapsed and s.elapsed>0 then
+      local key=(s.zone or '')..'|'..s.label
+      local r=routes[key]
+      if not r then
+        r={name=s.label,zone=s.zone,seconds=0,value=0,paid=0,runs=0,units=0,priced=0,vendor=0,methods={}}
+        routes[key]=r;sorted[#sorted+1]=r
+      end
+      r.seconds=r.seconds+s.elapsed;r.runs=r.runs+1;r.paid=r.paid+(s.returned or 0);r.vendor=r.vendor+(s.vendor or 0)
+      for id,item in pairs(s.items or {}) do
+        local lead=farmLeads[tonumber(id)]
+        local method=lead and lead:match('^([^:]+)')
+        if method then r.methods[method]=true end
+        local n=item.n or 0;r.units=r.units+n
+        if prices[tonumber(id)] then r.priced=r.priced+n;r.value=r.value+n*prices[tonumber(id)] end
+      end
+      r.hour=r.value*3600/r.seconds
+    end
+  end
+  table.sort(sorted,function(a,b)
+    if a.hour~=b.hour then return a.hour>b.hour end
+    if a.seconds~=b.seconds then return a.seconds>b.seconds end
+    return (a.name..(a.zone or ''))<(b.name..(b.zone or ''))
+  end)
+  return sorted
+end
+
 local function sessions()
   local a=M.account();a.farming=a.farming or {};return a.farming
 end
 function M.farmStart(label)
   local a=M.account()
   if a.farmActive then return 'A session is already running.' end
-  local s={label=label~='' and label or GetZoneText(),at=time(),items={},returned=0}
+  local s={label=label~='' and label or GetZoneText(),at=time(),zone=GetZoneText(),items={},returned=0}
   local list=sessions();list[#list+1]=s;a.farmActive=#list
   return 'Recording your loot in '..s.label
 end

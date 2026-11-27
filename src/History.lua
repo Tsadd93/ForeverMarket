@@ -59,6 +59,20 @@ function ForeverMarketHistory()
   all[key]=all[key] or {}
   return all[key]
 end
+local function scanScope()
+  return table.concat({GetCurrentRegion(),GetRealmID and GetRealmID() or '',ForeverMarketVenueRealm(),UnitFactionGroup('player') or ''},'|')
+end
+function ForeverMarketScanCompleted()
+  local db=ForeverMarketDB
+  db.completedMarkets=db.completedMarkets or {}
+  db.completedMarkets[scanScope()]=time()
+end
+function ForeverMarketHasScan()
+  local db=ForeverMarketDB
+  if not db then return false end
+  local key=scanScope()
+  return db.completedMarkets and db.completedMarkets[key]
+end
 function ForeverMarketEventRealm(e)
   local aliases=ForeverMarketDB and ForeverMarketDB.realmAliases
   return aliases and aliases[scope(e.realm or '',e.faction or '',e.region or 0)] or e.realm
@@ -224,6 +238,11 @@ local function decode(s)
 end
 function ForeverMarketMigrate()
   ForeverMarketHistory()
+  if not ForeverMarketDB.completedMarkets then
+    local snap=ForeverMarketDB.bulkSnapshot
+    ForeverMarketDB.completedMarkets={}
+    if snap and snap.scope and snap.observed and (snap.rows or 0)>0 then ForeverMarketDB.completedMarkets[snap.scope]=snap.observed end
+  end
   if ForeverMarketDB.historyImported or not ForeverMarketExport then return true end
   local ok,old=pcall(decode,ForeverMarketExport)
   if not ok or type(old)~='table' or not old.rows then

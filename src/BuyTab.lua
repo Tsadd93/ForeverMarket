@@ -533,7 +533,8 @@ local function candidates(keepVerified,snapshot)
       local h=db[tostring(id)]
       local days=0
       for d in pairs(h and h.h or {}) do if tonumber(d)<today and tonumber(d)>=today-14 then days=days+1 end end
-      if not byId[id] and days<3 then
+      if not byId[id] and days<3 and h and h.bulk and h.bulk.price and now>=h.bulk.at and now-h.bulk.at<=86400 then
+        ref=math.min(ref,h.bulk.price)
         leads[#leads+1]={id=id,ref=ref,scarceDays=0,rank=1,affordable=ref<=cash,potential=0,researchRank=math.huge,starter=true}
       end
     end
@@ -811,18 +812,19 @@ local function render()
     local sums=ForeverMarketTools.fundSummary()
     for _,b in ipairs(fundButtons) do b:SetText(b.caption..' '..ForeverMarketCoins(sums[b.section])) end
   end
-  content:SetHeight(math.max(1,#list*26))
+  content:SetHeight(math.max(1,#list*44))
   for i=1,math.max(#rows,#list) do
     local row=rows[i]
     if not row then
-      local y=-(i-1)*26-6
+      local y=-(i-1)*44-6
       row={name=label(content,8,y),qty=label(content,221,y),cost=label(content,269,y),profit=label(content,434,y)}
       ForeverMarketRowArt(content,y+5,672,i)
+      row.evidence=label(content,8,y-17);row.evidence:SetWidth(570);row.evidence:SetJustifyH('LEFT');row.evidence:SetWordWrap(false)
       row.qty:SetWidth(42);row.cost:SetWidth(156);row.profit:SetWidth(154)
       for _,t in ipairs({row.qty,row.cost,row.profit}) do t:SetJustifyH('LEFT');t:SetWordWrap(false) end
       row.name:SetWidth(205);row.name:SetJustifyH('LEFT');row.name:SetWordWrap(false)
-      row.hover=ForeverMarketHover(content,-(i-1)*26,590,row)
-      row.btn=CreateFrame('Button',nil,content,'UIPanelButtonTemplate');row.btn:SetSize(72,21);row.btn:SetPoint('TOPLEFT',600,-(i-1)*26)
+      row.hover=ForeverMarketHover(content,-(i-1)*44,590,row)
+      row.btn=CreateFrame('Button',nil,content,'UIPanelButtonTemplate');row.btn:SetSize(72,21);row.btn:SetPoint('TOPLEFT',600,-(i-1)*44)
       row.btn:SetScript('OnMouseDown',function()
         row.pressed=row.pick and {id=row.pick.v.id,n=row.pick.n,total=row.buyTotal,auctionID=row.pick.v.auctionID}
       end)
@@ -838,13 +840,24 @@ local function render()
     row.priceReason=p and not p.inactive and ("Buy "..p.n.." x "..ForeverMarketCoins(p.v.low).." / exit per item "..ForeverMarketCoins(p.v.exit).." / deposit reserved "..ForeverMarketCoins(p.dep or 0)) or nil
 
     if row.priceReason and p.v.starter then row.priceReason='Starter estimate '..date('%b %d',ForeverMarketStarter.at)..' / live offer checked. '..row.priceReason end
+    local evidence=''
+    if row.priceReason then
+      local id=p.v.itemID or p.v.id
+      local h=ForeverMarketHistory()[tostring(id)]
+      local observed=0
+      local today=math.floor(time()/86400)
+      for day=today-13,today do if h and h.l and h.l[day] then observed=observed+1 end end
+      evidence=((itemName and 'No recorded sales' or 'Sale history pending item name')..' / %d price days'):format(observed)
+    end
     if row.priceReason and itemName and ForeverMarketTools and ForeverMarketTools.marketOutcomes then
       local outcomes=ForeverMarketTools.marketOutcomes(itemName)
       if outcomes then
+        evidence=('14d: %d sold notices / %d expired'):format(outcomes.sales,outcomes.returns)..(outcomes.linked>0 and (' / avg %.1fh to sell'):format(outcomes.hours/outcomes.linked) or '')
         row.priceReason=row.priceReason..(' / 14 days: %d sale notices, %d expired'):format(outcomes.sales,outcomes.returns)
         if outcomes.linked>0 then row.priceReason=row.priceReason..(' / mean time to sale %.1fh'):format(outcomes.hours/outcomes.linked) end
       end
     end
+    row.evidence:SetText(evidence)
     if p and p.v.model and not p.inactive then
       local paper=ForeverMarketPaperDip and ForeverMarketPaperDip(p.v.id,p.v.exit)
       row.priceReason=("Historical replay: %d/%d dips recovered. "):format(p.v.model.wins,p.v.model.trials)..(paper or '')..row.priceReason
@@ -1131,6 +1144,7 @@ local function create()
   local target=CreateFrame('EditBox',nil,panel,'InputBoxTemplate')
   target:SetSize(38,24);target:SetPoint('TOPLEFT',413,0);target:SetAutoFocus(false)
   local function start()
+    if ForeverMarketHasScan and not ForeverMarketHasScan() then fundMessageUntil=GetTime()+5;note("Run Market Scan at this auction house first.");return end
     if watchScan~="bench" then benchmarkCash=nil;benchmarkQueue=nil end
     local pct=tonumber(target:GetText())
     if not pct or pct~=pct or pct<0 or pct>1000 then

@@ -50,6 +50,7 @@ local function location(button)
   if type(bag)=='number' and bag>=0 and bag<=5 and type(slot)=='number' and slot>0 and slot<=C_Container.GetContainerNumSlots(bag) then return bag,slot end
 end
 local function evaluate(bag,slot)
+  if ForeverMarketHasScan and not ForeverMarketHasScan() then return end
   if not C_Container then return end
   local info=C_Container.GetContainerItemInfo(bag,slot)
   if not info or not info.itemID then return end

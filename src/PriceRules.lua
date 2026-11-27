@@ -120,7 +120,7 @@ function M.importPrice(id,program,useLocal,evidence)
       if evidence then evidence[key]=values[key][1] end
       return values[key][1],values[key][2]
     end)
-    if n and n>0 then return n,nil,op.name end
+    if n and n>0 then return n,nil,op.name,op.settings end
     if why~='Condition false' then return nil,why or 'Price must be positive',op.name end
   end
   return nil,'No operation applies'

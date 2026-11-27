@@ -78,6 +78,17 @@ M.farmActivity('posted',{auctionId=1,itemId=10,quantity=2,total=20,name='Cloth',
 M.farmActivity('sale_notice',{auctionId=1})
 M.farmActivity('proceeds_collected',{invoiceType='seller',quantity=2,amount=22,fee=1,deposit=3,name='Cloth'})
 assert(s.returned==19)
+do
+  local old=M.farmTargets
+  M.farmTargets=function()return {{id=10,net=100}} end
+  local list=a.farming
+  a.farming={{label='Mine',zone='Test',elapsed=1800,items={[10]={n=8}},returned=300},
+    {label='Mine',zone='Test',elapsed=1800,items={[10]={n=2},[99]={n=2}}},
+    {label='Field',elapsed=3600,items={[10]={n=4}}},{label='Active',items={}}}
+  local routes=M.farmRouteRanks()
+  assert(#routes==2 and routes[1].hour==1000 and routes[1].paid==300 and routes[1].runs==2 and routes[1].priced==10 and routes[1].units==12)
+  a.farming=list;M.farmTargets=old
+end
 print('PASS: chart missing days, timed loot, vendor and market estimates, confirmed farm proceeds')
 
 source[10][2].who='Rogue'

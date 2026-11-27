@@ -168,7 +168,7 @@ local function previewProfile(profile,db,custom,overrides,replacements)
               tree=nil;err='Overlapping operations require a priority choice'
               result.skipped[#result.skipped+1]=path..' / '..opName..' / '..err
             end
-            sequence[#sequence+1]={name=opName,source=expr,tree=tree,error=err,settings=settings}
+            sequence[#sequence+1]={name=opName,original=op and op[priceKey],originalSize=op and op.stackSize,source=expr,tree=tree,error=err,settings=settings}
           end
         end
         if #names~=1 and (not side or #names==0) then

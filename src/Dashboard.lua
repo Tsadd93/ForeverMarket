@@ -25,6 +25,11 @@ local function data(view)
   local section=view.section
   local cutoff=time()-view.days*86400
   if section=='Overview' then
+    if ForeverMarketHasScan and not ForeverMarketHasScan() then
+      add('Run your first Market Scan','Visit an auctioneer to unlock local prices and recommendations.',function()
+        if AuctionHouseFrame and AuctionHouseFrame:IsShown() then view.frame:Hide();ForeverMarketScan() end
+      end)
+    end
     local fund=M.fundSummary(view.detail)
     if view.detail then
       add('Return to overview','All fund balances',function()selectPage('Overview')end)

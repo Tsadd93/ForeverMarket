@@ -435,6 +435,7 @@ print('PASS: isolated spike, full-stack fee rounding and recent downward reprici
 
 local priorHistory=ForeverMarketHistory
 dofile('src/History.lua')
+ForeverMarketScanCompleted()
 ForeverMarketHistory=priorHistory
 local floors={}
 for day=65,99 do floors[day]=100 end
@@ -480,10 +481,11 @@ end
 -- stale data and a live price rise must never produce that recommendation.
 do
   local old=ForeverMarketHistory
-  ForeverMarketHistory=function()return {} end
+  ForeverMarketHistory=function()return {['41001']={h={},l={},m=200,bulk={price=200,at=time()}}} end
   GetRealmID=function()return 6926 end;GetCurrentRegion=function()return 1 end
   UnitFactionGroup=function()return 'Horde' end
   ForeverMarketStarter={at=time(),realmID=6926,faction='Horde',region=1,items={[41001]=200}}
+  ForeverMarketScanCompleted()
   local d={low=10,lowQty=1,nextPrice=80,nextQty=50,floorPrice=80,floorQty=50}
   ForeverMarketSnapshot=function()return {at=elapsed,books={[41001]=d}} end
   C_AuctionHouse.GetNumCommoditySearchResults=function()return 2 end
