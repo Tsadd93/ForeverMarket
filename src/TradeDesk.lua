@@ -30,9 +30,13 @@ local function inventoryScope()
   if not id or id<=0 then id=(UnitGUID('player') or ''):match('^Player%-(%d+)%-') or GetRealmName() end
   return table.concat({GetCurrentRegion(),id,UnitFactionGroup('player')},'|')
 end
+M.inventoryScope=inventoryScope
 local function saveStock(where,items)
   local a=M.account()
   a.stockScope=inventoryScope();a.stockName=UnitName('player');a.stock=a.stock or {}
+  local n,realm
+  if UnitFullName then n,realm=UnitFullName('player') end
+  a.stockAddress=n and realm and realm~='' and (n..'-'..realm) or a.stockName
   a.stock[where]={items=items,at=time()}
 end
 local function bags(first,last)
@@ -294,6 +298,11 @@ function M.openDesk()
     panel:HookScript('OnHide',function()if M.quote and M.quote.direct then M.cancelMaterial() end;if M.groupsPanel then M.groupsPanel:Hide() end end)
   end
   panel:Show();search()
+end
+function M.openVendorDeals()
+  M.openDesk()
+  fields.term:SetText('');fields.level:SetText('');fields.quality:SetText('');fields.max:SetText('')
+  watch=false;usable=false;vendor=true;search()
 end
 function M.openGroups()
   if not M.groupsPanel then

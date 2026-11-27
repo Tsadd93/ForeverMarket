@@ -185,6 +185,8 @@ function M.mailSnapshot(list)
   a.mail=list;a.mailAsOf=time()
 end
 function M.onActivity(kind,e)
+  if M.farmActivity then M.farmActivity(kind,e) end
+  if kind=='purchase' or kind=='purchased_item_received' then M.tripDirty=true end
   local a=M.account()
   if M.recordMarket then M.recordMarket(kind,e) end
   if kind=='posted' and e.auctionId then a.sales[e.auctionId]={name=e.name,id=e.itemId,qty=e.quantity,amount=e.total,at=e.at,deposit=e.deposit}

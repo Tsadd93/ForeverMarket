@@ -92,6 +92,7 @@ local function create()
   end):SetText(M.account().useTransfers and 'Use bag stock only' or 'Use stored stock')
   button(panel,424,0,55,'Manage',function() if M.openManager then M.openManager() end end)
   button(panel,487,0,105,'Restock',function()switch('Restock')end)
+  button(panel,599,0,58,'Plan',function()M.openTools('Supply plan')end)
   notice=text(panel,4,-58,650)
   ForeverMarketResults(panel,80,{{'Recipe / material',0},{'Missing materials',202},{'Profit / cost',447},{'Action',566}})
   for i=1,9 do

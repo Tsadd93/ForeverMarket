@@ -393,7 +393,12 @@ local function candidates(keepVerified,snapshot)
   local db=ForeverMarketHistory()
   checked,unanswered,totalLeads=0,0,0
   missingScan=not db or not next(db)
-  if missingScan then return end
+  local seed=not investScan and not watchScan and ForeverMarketStarter
+  local realmID=GetRealmID and GetRealmID()
+  if not realmID or realmID==0 then realmID=tonumber((UnitGUID('player') or ''):match('^Player%-(%d+)%-')) end
+  if seed and (seed.realmID~=realmID or seed.region~=GetCurrentRegion() or seed.faction~=UnitFactionGroup('player') or GetRealmName():find('Neutral AH',1,true) or time()<seed.at or time()-seed.at>21*86400) then seed=nil end
+  if missingScan and not seed then return end
+  db=db or {}
   local cash=available()
   local books=ForeverMarketDB.__depth
   local book=books and books[GetRealmName()..'|'..UnitFactionGroup('player')]
@@ -475,6 +480,17 @@ local function candidates(keepVerified,snapshot)
         end
       end
     end
+  end
+  if seed then
+    for id,ref in pairs(seed.items) do
+      local h=db[tostring(id)]
+      local days=0
+      for d in pairs(h and h.h or {}) do if tonumber(d)<today and tonumber(d)>=today-14 then days=days+1 end end
+      if not byId[id] and days<3 then
+        leads[#leads+1]={id=id,ref=ref,scarceDays=0,rank=1,affordable=ref<=cash,potential=0,researchRank=math.huge,starter=true}
+      end
+    end
+    missingScan=#leads==0
   end
   local eligible,pending={},{}
   for _,lead in ipairs(leads) do
@@ -688,6 +704,7 @@ local function render()
     local itemName=p and C_Item.GetItemNameByID(p.v.itemID or p.v.id)
     row.marketId=p and (p.v.itemID or p.v.id)
     row.priceReason=p and not p.inactive and ("Buy "..p.n.." x "..ForeverMarketCoins(p.v.low).." / exit per item "..ForeverMarketCoins(p.v.exit).." / deposit reserved "..ForeverMarketCoins(p.dep or 0)) or nil
+    if row.priceReason and p.v.starter then row.priceReason='Starter estimate '..date('%b %d',ForeverMarketStarter.at)..' / live offer checked. '..row.priceReason end
     if row.priceReason and itemName and ForeverMarketTools and ForeverMarketTools.marketOutcomes then
       local outcomes=ForeverMarketTools.marketOutcomes(itemName)
       if outcomes then
@@ -716,7 +733,7 @@ local function render()
   if fund().pending then note('Waiting for purchase confirmation.')
   elseif quote then return
   elseif available()==0 then note('No trading cash available for a purchase.')
-  elseif missingScan then note('Open Market Scan to collect price history.')
+  elseif missingScan then note('Building local history.');detail:SetText('Browse > Below vendor works after a Market Scan.')
   elseif investScan and totalLeads==0 then note('Invest: no qualifying recovery patterns');detail:SetText(('Best coverage: %s, %d days / 14 minimum; repeated rebounds required.'):format(report.bestItem and C_Item.GetItemNameByID(report.bestItem) or 'none',report.bestDays or 0))
   elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates · %d junk filtered · %d uncached'):format(junkCount,unknownCount))
   else

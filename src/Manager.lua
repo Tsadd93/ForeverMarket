@@ -348,8 +348,21 @@ local function ownedDetail(r)
   local b=info and info.isCommodity and snap and snap.books[k.itemID]
   local bulk=q and time()-q.at<=60 and q.price or b and b.floorPrice
   if not bulk then return money(unit)..' each / market check needed' end
-  if unit>bulk then local s=M.account().sales[r.auctionID];return 'Above bulk by '..money(unit-bulk)..' each / deposit '..(s and s.deposit and money(s.deposit) or 'unknown') end
-  if b and b.low and b.low<unit then return 'Keep / thin low offer at '..money(b.low) end
+  if unit>bulk then
+    local sale=M.account().sales[r.auctionID]
+    local dep=sale and sale.deposit
+    local fee=api.GetCancelCost and api.GetCancelCost(r.auctionID)
+    local cheaper=0;for _,tier in ipairs(b and b.levels or {}) do if tier[1]<unit then cheaper=cheaper+tier[2] end end
+    local outcomes=M.marketOutcomes(nameOf(k.itemID))
+    local pace=outcomes and outcomes.paidUnits
+    if pace and cheaper>0 and cheaper<=math.max(1,pace/14) then return 'Leave posted / '..cheaper..' cheaper, within a day of your paid volume' end
+    if not dep or not fee then return 'Review for relist / cancellation cost unknown' end
+    local net=ForeverMarketSaleNet(bulk*r.quantity)-dep-fee
+    local vendor=select(11,C_Item.GetItemInfo(k.itemID))
+    if vendor and net<=vendor*r.quantity then return 'Leave posted / relisting nets vendor value or less' end
+    return 'Review for relist / '..(cheaper>0 and (cheaper..' cheaper / ') or '')..'forfeit '..money(dep+fee)
+  end
+  if b and b.low and b.low<unit then return 'Leave posted / '..(b.lowQty or '?')..' at '..money(b.low) end
   return 'Competitive / bulk '..money(bulk)
 end
 local function cancel(r)
@@ -381,7 +394,7 @@ local function entries()
   if mode=='Auctions' then
     for i=1,api.GetNumOwnedAuctions() do
       local r=api.GetOwnedAuctionInfo(i)
-      if r and r.itemKey and (not undercutsOnly or ownedDetail(r):match("^Above bulk")) then
+      if r and r.itemKey and (not undercutsOnly or ownedDetail(r):match("^Review for relist")) then
         add(nameOf(r.itemKey.itemID)..' x '..r.quantity,ownedDetail(r),r.status==0 and (confirm and confirm.id==r.auctionID and 'Confirm' or 'Cancel'),function()return cancel(r)end,r.auctionID)
       end
     end
@@ -489,6 +502,7 @@ local function create()
   panel:SetBackdrop({bgFile='Interface\\DialogFrame\\UI-DialogBox-Background-Dark',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',edgeSize=12});panel:SetBackdropColor(.12,.10,.08,1);panel:Hide()
   for i,m in ipairs({'Auctions','Shopping','Ledger','Rules'}) do button(panel,8+(i-1)*94,-6,91,m,function()mode=m;page=1;confirm=nil;ledgerItem=nil;status:SetText('');refresh() end) end
   button(panel,388,-6,65,'Refresh',refresh);button(panel,455,-6,76,'Browse',function()panel:Hide();M.openDesk()end);button(panel,532,-6,78,'Close',function()panel:Hide()end)
+  button(panel,611,-6,58,'Tools',function()panel:Hide();M.openTools('Basket')end)
   title=label(panel,12,-36,655);status=label(panel,12,-124,650)
   entry=field(15,-74,166);target=field(190,-74,62);cap=field(266,-74,94);listName=field(375,-74,115)
   local function control(m,f) controls[#controls+1]={mode=m,frame=f};return f end
@@ -512,7 +526,7 @@ local function create()
   end)
   command('Shopping',201,90,'Copy list',function()entry:SetText(M.exportList());entry:SetFocus();entry:HighlightText();return 'Copy the selected list text.' end)
   command('Shopping',294,90,'Import',function()return M.importList(entry:GetText()) and 'Imported into active list.' or 'Invalid shared list.' end)
-  command('Shopping',388,130,'Buy missing',function()panel:Hide();M.openMaterials() end)
+  command('Shopping',388,130,'Buy missing',function()panel:Hide();if M.openTools then M.openTools('Basket') else M.openMaterials() end end)
   command('Rules',8,120,'Sell quickly',function()return addRule('Quick')end)
   command('Rules',130,122,'Protect margin',function()return addRule('Margin')end)
   command('Rules',254,123,'Keep for craft',function()return addRule('Keep')end)

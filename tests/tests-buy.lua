@@ -1,4 +1,5 @@
 local callbacks,buttons={},{}
+date=os.date
 local elapsed=20
 function GetTime()return elapsed end
 function time()return 100*86400 end
@@ -474,6 +475,28 @@ do
   print('PASS: interrupted Invest search resumes the outstanding lookup and requires a fresh live result')
 end
 
+-- A matching dated seed can lead a new account to a live offer. Wrong realm,
+-- stale data and a live price rise must never produce that recommendation.
+do
+  local old=ForeverMarketHistory
+  ForeverMarketHistory=function()return {} end
+  GetRealmID=function()return 6926 end;GetCurrentRegion=function()return 1 end
+  UnitFactionGroup=function()return 'Horde' end
+  ForeverMarketStarter={at=time(),realmID=6926,faction='Horde',region=1,items={[41001]=200}}
+  local d={low=10,lowQty=1,nextPrice=80,nextQty=50,floorPrice=80,floorQty=50}
+  ForeverMarketSnapshot=function()return {at=elapsed,books={[41001]=d}} end
+  C_AuctionHouse.GetNumCommoditySearchResults=function()return 2 end
+  C_AuctionHouse.GetCommoditySearchResultInfo=function(_,i)return i==1 and {unitPrice=10,quantity=1} or {unitPrice=80,quantity=50} end
+  start:OnClick();update();assert(not observedRows[1].pick)
+  dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001);assert(observedRows[1].pick and observedRows[1].pick.v.starter)
+  C_AuctionHouse.GetCommoditySearchResultInfo=function(_,i)return {unitPrice=190+i,quantity=1} end
+  start:OnClick();update();dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001);assert(not observedRows[1].pick)
+  ForeverMarketStarter.realmID=123;ordered={};start:OnClick();update();assert(#ordered==0)
+  ForeverMarketStarter.realmID=6926;ForeverMarketStarter.at=time()-22*86400
+  start:OnClick();update();assert(#ordered==0)
+  ForeverMarketStarter=nil;ForeverMarketHistory=old
+  print('PASS: starter seed realm, age, first-day live eligibility and rejected price rise')
+end
 -- Exercise the production planner with indivisible offers that defeat both
 -- pure ROI ordering and the best single offer at three different budgets.
 do

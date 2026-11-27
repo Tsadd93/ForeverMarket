@@ -68,6 +68,7 @@ function ForeverMarketHover(parent,y,width,row)
     if row.itemRef then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink(row.itemRef);if row.marketId and ForeverMarketTools and ForeverMarketTools.explain then ForeverMarketTools.explain(GameTooltip,row.marketId,row.priceReason) elseif row.saleText then GameTooltip:AddLine(row.saleText) end;GameTooltip:Show() end
   end)
   hit:SetScript('OnClick',function()
+    if row.marketId and IsShiftKeyDown and IsShiftKeyDown() and ForeverMarketTools.openTools then ForeverMarketTools.openTools('History',row.marketId);return end
     if row.itemRef and SetItemRef then
       local link=row.itemRef:match('|H([^|]+)|h') or row.itemRef
       SetItemRef(link,row.itemRef,'LeftButton')
@@ -161,6 +162,8 @@ SlashCmdList.FOREVERMARKET=function(msg)
   msg=(msg or ''):lower():match('^%s*(.-)%s*$')
   if msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()
   elseif msg=='manage' and ForeverMarketTools and ForeverMarketTools.openManager and AuctionHouseFrame and AuctionHouseFrame:IsShown() then ForeverMarketTools.openManager()
+  elseif msg=='tools' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Basket')
+  elseif msg=='farm' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Farming')
   elseif msg=='scan' and ForeverMarketScan then ForeverMarketScan()
   elseif msg=='' or msg=='export' then export(false)
   elseif msg=='scanstatus' then

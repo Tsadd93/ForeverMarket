@@ -40,6 +40,19 @@ Click a Buy or Sell item name for a persistent item tooltip. Where available, it
 
 Invest compares subsequent bulk quotes against the frozen exit on the next three UTC market days. Incomplete windows without an observed recovery are tracked separately in forward tests. Beta clients with a blank realm name use a realm identifier. A legacy blank history is recovered automatically when saved character identities agree on the current realm.
 
+## Market tools
+
+Open **Tools** from the manager or type `/fm tools`.
+
+- **Basket** combines shopping requirements for this character and shows quantities already covered, live availability and the cost of a partial fill. Review the quantity and confirm the live quote. **Vendor deals** checks offers against vendor proceeds.
+- **Mail & bank** lets you choose a known bank alt, reserve quantities and prepare a shipment. Check the draft and send it through the normal mailbox. At the bank, use the withdrawal list to gather missing stock.
+- **Supply plan** compares buying, vendor bundles and crafting with recipes recorded across your characters. Open professions on each crafter and visit banks and merchants to record stock and offers. Save a plan for the craft order and add its auction ingredients to your shopping list.
+- **History** charts seven or thirty days of observed asks, available quantities and your paid sales when available. Shift-click an item name on Market Buy or Sell to open its chart.
+- **Farming** records timed loot sessions. Compare estimated hourly vendor or auction returns with proceeds actually attributed to the session. When identical farmed and pre-existing items mix, attribution uses the recorded quantities in order.
+- **Import** previews supported Auctionator shopping lists and TSM item-ID lists before saving. Review skipped entries and unresolved names before applying. Pricing formulas and advanced search filters require separate setup.
+
+The starter reference covers 100 commodities on the sampled US Horde Forever market. It expires after 21 days. Other markets can use local scans and live vendor deals. In the manager, review undercuts alongside competing quantity, deposit cost and recent sales before deciding whether to relist.
+
 ## Optional Windows dashboard
 
 [Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.
@@ -51,7 +64,7 @@ To connect your character, run an auction scan in WoW, then use `/fm export` and
 1. Open a learned profession window to capture recipes on the current character.
 2. At an auctioneer, open **Market Scan** and start a scan. Hover over a bag item to see vendor value and available auction pricing.
 3. In **Market Sell**, review the stack quantity and suggested posting price. The scanner checks bulk supply so one unusually cheap unit need not set the price for the entire stack.
-4. In **Market Buy**, set your trading fund and minimum estimated return. Start a scan to check live offers. A fresh install needs at least three prior days of history for an item to qualify.
+4. In **Market Buy**, set your trading fund and minimum estimated return. Start a scan to check live offers. On a matching market, a recent bundled reference can help identify candidates while local scan history builds. Buy checks still require a live offer.
 5. In **Craft**, review material costs and estimated proceeds. Add recipes to your build list and use **Materials** to shop for the missing quantities.
 
 Purchases and posts require player input. Estimated proceeds depend on an item selling. All core features work with the game addon alone.
