@@ -13,7 +13,7 @@ local function begin()
   step=ForeverMarketReadySnapshot and ForeverMarketReadySnapshot() and 'start' or 'snapshot'
   count=0;last=GetTime()
   setScanning(true)
-  status:SetText('Waiting for the auction houseâ€¦')
+  status:SetText('Waiting for the auction house...')
 end
 ForeverMarketScan=begin
 local function create()
@@ -81,9 +81,9 @@ local function create()
       local name=e and (e.pet and ('Battle pet #'..e.pet) or C_Item.GetItemNameByID(e.id) or ('Item #'..e.id))
       if e and e.level then name=name..' ('..e.level..')' end
       ForeverMarketSetItemText(r[1],e and (ForeverMarketRowIcon and ForeverMarketRowIcon(e.id,name) or name) or '')
-      r[2]:SetText(e and tostring(e.qty or 'â€”') or '')
+      r[2]:SetText(e and tostring(e.qty or '-') or '')
       r[3]:SetText(e and ForeverMarketCoins(e.low) or '')
-      r[4]:SetText(e and (e.bulk and ForeverMarketCoins(e.bulk) or 'â€”') or '')
+      r[4]:SetText(e and (e.bulk and ForeverMarketCoins(e.bulk) or '-') or '')
       local ratio=e and relative(e)
       r[5]:SetText(e and (model and (ratio and ('%.0f%%'):format(ratio*100) or 'No history') or e.seen and date('%b %d',e.seen)) or '')
       if r[5].SetTextColor then
@@ -186,18 +186,18 @@ local function create()
     if step=='snapshot' then
       local data,state
       if ForeverMarketSnapshot then data,state=ForeverMarketSnapshot() end
-      if data and data.at>=last then if ForeverMarketScanCompleted then ForeverMarketScanCompleted() end;refreshTable(data);finish(('Snapshot ready Â· %d auction rows Â· %ds old'):format(data.rows,GetTime()-data.at));return end
+      if data and data.at>=last then if ForeverMarketScanCompleted then ForeverMarketScanCompleted() end;refreshTable(data);finish(('Snapshot ready / %d auction rows / %ds old'):format(data.rows,GetTime()-data.at));return end
       if state=='pending' or state=='throttled' and GetTime()-last<20 then
         local done,total
         if ForeverMarketSnapshotProgress then done,total=ForeverMarketSnapshotProgress() end
-        status:SetText(total and ('Reading auctions  /  %d of %d rows'):format(done,total) or 'Waiting for the realm snapshotâ€¦');return
+        status:SetText(total and ('Reading auctions  /  %d of %d rows'):format(done,total) or 'Waiting for the realm snapshot...');return
       end
-      step='start';last=GetTime();status:SetText('Requesting fresh auction listingsâ€¦')
-    end
-    if step and not api.IsThrottledMessageSystemReady() then
-      status:SetText('Waiting for the auction house to accept the next requestâ€¦');last=GetTime();return
+      step='start';last=GetTime();status:SetText('Requesting fresh auction listings...')
     end
     if GetTime()-last>20 then finish('Auction house timed out. Click Scan market to retry.');return end
+    if step and not api.IsThrottledMessageSystemReady() then
+      status:SetText('Waiting for the auction house to accept the next request...');return
+    end
     if step and api.IsThrottledMessageSystemReady() then
       local action=step;step=nil;last=GetTime()
       if action=='start' then api.SendBrowseQuery(query) else api.RequestMoreBrowseResults() end
@@ -214,7 +214,7 @@ local f=CreateFrame('Frame')
 for _,ev in ipairs({'AUCTION_HOUSE_SHOW','AUCTION_HOUSE_CLOSED','AUCTION_HOUSE_BROWSE_RESULTS_UPDATED','AUCTION_HOUSE_BROWSE_RESULTS_ADDED'}) do f:RegisterEvent(ev) end
 f:SetScript('OnEvent',function(_,ev)
   if ev=='AUCTION_HOUSE_SHOW' then opened=true;create();return end
-  if ev=='AUCTION_HOUSE_CLOSED' then opened=false;query=nil;return end
+  if ev=='AUCTION_HOUSE_CLOSED' then opened=false;if query then finish('Scan stopped.') end;return end
   if not query or step=='start' or step=='snapshot' then return end
   local rows=api.GetBrowseResults()
   if not api.HasFullBrowseResults() then

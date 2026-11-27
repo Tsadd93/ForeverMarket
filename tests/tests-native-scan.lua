@@ -61,3 +61,11 @@ ForeverMarketScan();panel:OnUpdate();assert(sends==2)
 events:OnEvent('AUCTION_HOUSE_BROWSE_RESULTS_UPDATED')
 assert(findText('Scan complete / 2 item prices saved.'))
 print('PASS: standalone native tab, throttling, pagination, gear and commodity discovery')
+
+-- A persistent throttle must eventually release the scan controls without issuing a request.
+ready=false;ForeverMarketScan();panel:OnUpdate()
+clock=clock+12;panel:OnUpdate();assert(sends==2)
+clock=clock+12;panel:OnUpdate()
+assert(findText('Auction house timed out. Click Scan market to retry.'))
+ready=true;panel:OnUpdate();assert(sends==2)
+ForeverMarketScan();panel:OnUpdate();assert(sends==3)
