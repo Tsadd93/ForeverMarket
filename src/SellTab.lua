@@ -251,7 +251,7 @@ local function paint()
     row.editKey=s and s.stackKey
     if row.qty:GetText()~=raw then row.qty:SetText(raw) end
     row.qty:SetShown(s~=nil);row.qty:SetEnabled(s and s.commodity or false)
-    row.detail:SetText(s and (s.locked and 'Item locked' or fresh(q) and quoteDetail(q) or (failures[s.key] or 0)>=2 and 'No live response' or query and query.key==s.key and 'Looking upâ€¦' or 'Queued') or '')
+    row.detail:SetText(s and (s.locked and 'Item locked' or fresh(q) and quoteDetail(q) or (failures[s.key] or 0)>=2 and 'No live response' or query and query.key==s.key and 'Looking up...' or 'Queued') or '')
     row.price:SetText(s and s.valid and fresh(q) and (price(q,s) or q.average) and ForeverMarketCoins(price(q,s) or q.average) or '')
     if s and fresh(q) and price(q,s) and quantity(s) then row.price:SetText(ForeverMarketCoins(price(q,s)*quantity(s))) end
     row.marketId=s and s.k.itemID
@@ -274,7 +274,7 @@ local function paint()
     row.keep:SetShown(s~=nil);row.keep:SetChecked(keep and true or false)
     row.post:SetShown(s~=nil)
     row.needsCheck=s and (not fresh(q) or q.timedOut)
-    row.post:SetText(row.needsCheck and 'Check' or row.override and (nativeFallback and 'Sellâ€¦' or 'Post held') or nativeFallback and 'Sellâ€¦' or 'Post')
+    row.post:SetText(row.needsCheck and 'Check' or row.override and (nativeFallback and 'Sell...' or 'Post held') or nativeFallback and 'Sell...' or 'Post')
     row.post:SetEnabled((not row.hold or row.override) and not pending and s and not s.locked and (row.needsCheck or q and price(q,s)~=nil) or false)
     if keep then row.hold=true;row.override=false;row.needsCheck=false;row.detail:SetText("Protected");row.post:SetText("Post");row.post:SetEnabled(false) end
     row.quote=q;row.reviewedUnit=s and q and price(q,s)
@@ -348,7 +348,7 @@ post=function(row)
   if C_Timer then C_Timer.After(8,function()
     if pending==attempt then
       pending=nil;pendingStack=nil;nativeFallback=true
-      report('Post unconfirmed. Check Auctions before using Sellâ€¦');paint()
+      report('Post unconfirmed. Check Auctions before using Sell...');paint()
     end
   end) end
   do
@@ -357,7 +357,7 @@ post=function(row)
       if api.PostCommodity(s.loc,duration(s),qty,p) then AuctionHouseFrame.CommoditiesSellFrame:CachePendingPost(s.loc,duration(s),qty,p) end
     elseif api.PostItem(s.loc,duration(s),qty,nil,p) then AuctionHouseFrame.ItemSellFrame:CachePendingPost(s.loc,duration(s),qty,nil,p) end
   end
-  if pending then caption:SetText('Waiting for auction confirmationâ€¦');paint() end
+  if pending then caption:SetText('Waiting for auction confirmation...');paint() end
 end
 local function result(ev,arg)
   if not query or not arg then return end
@@ -394,7 +394,7 @@ local function result(ev,arg)
     end
   end
   if not commodity and ForeverMarketTools and ForeverMarketTools.recordGearBook then ForeverMarketTools.recordGearBook(arg,n) end
-  caption:SetText("Checked "..query.link.." Â· "..n.." auction price rows.")
+  caption:SetText("Checked "..query.link.." / "..n.." auction price rows.")
   local q=ForeverMarketPriceDepth(levels)
   if q then
     if ForeverMarketTools then
@@ -565,7 +565,7 @@ local function create()
   end)
   button(panel,'Preview',440,-6,65,function()if ForeverMarketTools and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview') end end)
   button(panel,'Refresh',510,-6,66,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
-  ForeverMarketResults(panel,56,{{'Name',0},{'Qty',237},{'Bulk ask Ã— supply',292},{'Stack total',467},{'Action',592}})
+  ForeverMarketResults(panel,56,{{'Name',0},{'Qty',237},{'Bulk ask × supply',292},{'Stack total',467},{'Action',592}})
   scroll=CreateFrame('ScrollFrame','ForeverMarketSellScroll',panel,'UIPanelScrollFrameTemplate')
   scroll:SetPoint('TOPLEFT',0,-82)
   scroll:SetPoint('BOTTOMRIGHT',-30,8)
@@ -595,7 +595,7 @@ if api.RequestMoreItemSearchResults then pcall(events.RegisterEvent, events, 'IT
 events:SetScript('OnEvent',function(_,ev,arg,msg)
   if ev=='AUCTION_HOUSE_SHOW' then create();return end
   if (ev=='ADDON_ACTION_BLOCKED' or ev=='ADDON_ACTION_FORBIDDEN') and pending then
-    pending=nil;pendingStack=nil;nativeFallback=true;report('WoW blocked the action. Use Sellâ€¦ to open Blizzard Sell.');paint();return
+    pending=nil;pendingStack=nil;nativeFallback=true;report('WoW blocked the action. Use Sell... to open Blizzard Sell.');paint();return
   end
   if not panel or not panel:IsVisible() then return end
   if ev=='BAG_UPDATE_DELAYED' then bags();paint()

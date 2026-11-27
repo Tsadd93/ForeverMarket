@@ -855,7 +855,7 @@ local function render()
   elseif scanCash()==0 then note('No trading cash available for a purchase.')
   elseif missingScan then note('Building local history.');detail:SetText('Browse > Below vendor works after a Market Scan.')
   elseif investScan and totalLeads==0 then note('Invest: no qualifying recovery patterns');detail:SetText(('Best coverage: %s, %d days / 14 minimum; repeated rebounds required.'):format(report.bestItem and C_Item.GetItemNameByID(report.bestItem) or 'none',report.bestDays or 0))
-  elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates Â· %d junk filtered Â· %d uncached'):format(junkCount,unknownCount))
+  elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates / %d junk filtered / %d uncached'):format(junkCount,unknownCount))
   else
     local progress=('%g%% | %d/%d resolved | %d unanswered'):format(ForeverMarketMarginBP()/100,math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
     if #categories>0 then
@@ -866,12 +866,12 @@ local function render()
     elseif browse then detail:SetText('Browsing category')
     else detail:SetText(scanWait or '') end
     if snapshotMode then
-      progress=('Bulk Â· %d/%d resolved Â· %d unanswered'):format(math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
-      if firstResult then progress=progress..(' Â· first buy %.1fs'):format(firstResult) end
+      progress=('Bulk / %d/%d resolved / %d unanswered'):format(math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
+      if firstResult then progress=progress..(' / first buy %.1fs'):format(firstResult) end
     end
-    progress=progress..(' | %d junk Â· %d stocked'):format(junkCount,report and report.stockSkipped or 0)
+    progress=progress..(' | %d junk / %d stocked'):format(junkCount,report and report.stockSkipped or 0)
     if unknownCount>0 then progress=progress..(' | %d uncached'):format(unknownCount) end
-    if buyCount>0 then note((investScan and 'Invest / ' or '')..progress);if completed then detail:SetText(('Complete Â· %d shopping list items'):format(buyCount)) end
+    if buyCount>0 then note((investScan and 'Invest / ' or '')..progress);if completed then detail:SetText(('Complete / %d shopping list items'):format(buyCount)) end
     elseif browse or categoryIndex<=#categories or search or cursor<=#leads then note(progress)
     else note(completed and ('Complete / no qualifying buys / '..unanswered..' unanswered') or progress);local reason,most='No eligible live offers',0
       for _,pair in ipairs({{'Too little history',report.thinHistory},{'Over budget',report.overBudget},{'Margin too small',report.weakSpread},{'No supply',report.noSupply},{'Already stocked',report.stockSkipped}}) do
@@ -996,7 +996,7 @@ local function tick(refreshUI)
   if waitingSince then
     local data,state=ForeverMarketSnapshot()
     if not data and (state=='pending' or state=='throttled') and GetTime()-waitingSince<3 then
-      updateReport(state);note('Receiving market snapshotÂ…');detail:SetText('');return
+      updateReport(state);note('Receiving market snapshot...');detail:SetText('');return
     end
     awaitingBulk=not data and state=='pending';nextBulkCheck=GetTime()+1
     waitingSince=nil;snapshotMode=data~=nil;report.source=data and "bulk" or "browse";report.snapshotStatus=state or (data and "ready" or "unavailable");candidates(false,data)
@@ -1021,7 +1021,7 @@ local function tick(refreshUI)
     end
     if #unresolved>0 and GetTime()-f.at<4 then
       f.items=unresolved;f.next=GetTime()+.5
-      note('Checking item quality Â· '..#unresolved..' pending');detail:SetText('');return
+      note('Checking item quality / '..#unresolved..' pending');detail:SetText('');return
     end
     unknownCount=#unresolved;pendingFilter=nil
     rankCandidates(f.snapshot,f.grouped,scanCash())

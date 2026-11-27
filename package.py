@@ -15,7 +15,7 @@ for library, license_name in (("LibDeflate", "LICENSE.txt"), ("LibSerialize", "L
                     + "ForeverMarket" + library + " = loadLibrary() end\n")
 for name in modules:
     file = name + ".lua"
-    source = (root / "src" / file).read_bytes().decode("utf-8-sig", errors="replace")
+    source = (root / "src" / file).read_bytes().decode("utf-8-sig")
     sections.append("do local function loadModule()\n" + source +
                     "\nend local ok,err=pcall(loadModule); if not ok then print('Forever Market " +
                     file + " failed: '..tostring(err)) end end\n")
