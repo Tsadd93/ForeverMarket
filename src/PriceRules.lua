@@ -93,6 +93,10 @@ function M.evaluatePrice(tree,read)
   return v
 end
 function M.ruleSource(id,key,useLocal)
+  local v,reason,label
+  if M.feedValue and not (useLocal and market[key]) then v,reason,label=M.feedValue(id,key);if v~=nil then return v,nil,label end end
+  if M.personalPrice then v,reason,label=M.personalPrice(id,key);if v~=nil then return v,nil,label end end
+  if M.operationSources and M.operationSources[key] then v,reason,label=M.operationValue(id,key);if v~=nil then return v,nil,label end end
   if key=='fmbags' then return M.bagCount(id)
   elseif key=='fmsold' or key=='fmexpires' then
     local name=C_Item.GetItemNameByID(id)
@@ -117,7 +121,7 @@ function M.ruleSource(id,key,useLocal)
       if ok and type(n)=='number' and n>=0 then return n end
     end
     local v=M.regionReference and M.regionReference(id)
-    if v then return key=='dbregionsalerate' and v[2] or v[3] end
+    if v then local n=v[key=='dbregionsalerate' and 2 or 3];if type(n)=='number' then return n end end
   elseif market[key] or tsmOnly[key] then
     if useLocal and market[key] then
       local n,why=M.policyFloor(id,true,{realmPct=100});if not why and n>0 then return n end
@@ -126,7 +130,7 @@ function M.ruleSource(id,key,useLocal)
       if ok and type(n)=='number' and (n>0 or n==0 and (key=='dbregionsalerate' or key=='dbregionsoldperday' or key=='numinventory' or key=='salerate' or key=='numexpires')) then return n end
     end
   end
-  return nil,'Missing '..key
+  return nil,reason or 'Missing '..key
 end
 function M.importPrice(id,program,useLocal,evidence)
   local values={}
@@ -134,7 +138,7 @@ function M.importPrice(id,program,useLocal,evidence)
     if not op.tree then return nil,op.error or 'Unresolved operation' end
     local n,why=M.evaluatePrice(op.tree,function(key)
       if not values[key] then values[key]={M.ruleSource(id,key,useLocal)} end
-      if evidence then evidence[key]=values[key][1] end
+      if evidence then evidence[key]=values[key][1] or false end
       return values[key][1],values[key][2]
     end)
     if n and n>0 then return n,nil,op.name,op.settings end

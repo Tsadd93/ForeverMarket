@@ -72,6 +72,8 @@ function M.importReferencePack(raw)
   return 'Reviewed '..pack.count..' reference prices. Trading uses local scans.'
 end
 function M.regionReference(id)
+  local full=M.fullRegion and M.fullRegion();local r=full and full.items[id]
+  if r and r[1] then return {r[1],r[2],r[3],full.at} end
   local v=ForeverMarketRegionPrices and ForeverMarketRegionPrices[id]
   if v and v[4]<=time() and time()-v[4]<=7*86400 then return v end
 end
@@ -90,7 +92,9 @@ function M.sharedReferences(filter)
   for id,v in pairs(source) do
     if v.at<=time() and time()-v.at<=7*86400 and not (matching and seed.items[id] and seed.at>v.at) then rows[#rows+1]={id=id,at=v.at,price=v.price} end
   end
-  for id in pairs(ForeverMarketRegionPrices or {}) do
+  local full=M.fullRegion and M.fullRegion()
+  local indexed=filter and {[filter]=true} or full and full.items or ForeverMarketRegionPrices or {}
+  for id in pairs(indexed) do
     if not filter or filter==id then
       local v=M.regionReference(id)
       if v then rows[#rows+1]={id=id,at=v[4],price=v[1],regional=true,rate=v[2],volume=v[3]} end
@@ -103,7 +107,7 @@ function M.sharedReferences(filter)
   end
   table.sort(rows,function(a,b)
     if a.regional~=b.regional then return not a.regional end
-    if a.regional and a.volume~=b.volume then return a.volume>b.volume end
+    if a.regional and (a.volume or 0)~=(b.volume or 0) then return (a.volume or 0)>(b.volume or 0) end
     return a.id<b.id
   end)
   return rows
@@ -155,7 +159,7 @@ function M.savePriceProgram(ids,side,expression)
   for _,id in ipairs(ids) do
     local group=M.group(id) or {margin=0,stock=0,cap=0}
     local old=M.importedRules(group) or {}
-    group.program={buy=old.buy,sell=old.sell};group.programID=nil
+    group.program={buy=old.buy,sell=old.sell,sources=old.sources};group.programID=nil
     group.program[side]=seq
     M.account().desk.groups[id]=group
   end

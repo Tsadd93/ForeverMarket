@@ -111,14 +111,15 @@ local function readMail()
   local loaded,total=GetInboxNumItems()
   for i=1,loaded do
     local e=invoice(i)
-    if not e and expiredPattern and GetInboxItem then
+    if not e and GetInboxItem then
       local _,_,_,subject=GetInboxHeaderInfo(i)
       local itemName,id,_,quantity=GetInboxItem(i,1)
-      if id and quantity and subject and subject:match('^'..expiredPattern..'$') then
+      local cancelled=itemName and AUCTION_REMOVED_MAIL_SUBJECT and subject==AUCTION_REMOVED_MAIL_SUBJECT:format(itemName)
+      if id and quantity and subject and (cancelled or expiredPattern and subject:match('^'..expiredPattern..'$')) then
         local key=id..'/'..quantity;returned[key]=(returned[key] or 0)+1
         if ForeverMarketTools then
           local old=ForeverMarketTools.account().returns or {}
-          if returned[key]>(old[key] or 0) then record('auction_expired',{itemId=id,name=itemName,quantity=quantity}) end
+          if returned[key]>(old[key] or 0) then record(cancelled and 'auction_cancelled' or 'auction_expired',{itemId=id,name=itemName,quantity=quantity}) end
         end
       end
     end

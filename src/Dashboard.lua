@@ -31,6 +31,7 @@ local function data(view)
         if AuctionHouseFrame and AuctionHouseFrame:IsShown() then view.frame:Hide();ForeverMarketScan() end
       end)
     end
+    if M.regionalStatus and not view.detail then add('Update regional data',M.regionalStatus(),function()M.updatePrices(true)end) end
     local fund=M.fundSummary(view.detail)
     if view.detail then
       add('Return to overview','All fund balances',function()selectPage('Overview')end)
@@ -275,7 +276,7 @@ end
 function M.openDashboard()
   hub=hub or create(true)
   if hub.frame:IsShown() then hub.refresh() else hub.frame:Show() end
-  hub.frame:Raise()
+  hub.frame:Raise();if M.updatePrices then M.updatePrices(false) end
 end
 function M.openAnalytics()
   if book and AuctionHouseFrame:IsShown() then book.frame.selectTab();return end

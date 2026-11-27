@@ -107,6 +107,9 @@ local function previewProfile(profile,db,custom,overrides,replacements)
             for _,name in ipairs(names) do if name==chosen then names={chosen};break end end
           end
         end
+        local fields=({Auctioning={minPrice='auctioningopmin',normalPrice='auctioningopnormal',maxPrice='auctioningopmax'},Shopping={maxPrice='shoppingopmax'},Sniper={belowPrice='sniperopmax'}})[kind]
+        local first=operations[kind] and operations[kind][names[1]]
+        if fields and first then for field,key in pairs(fields) do local tree=M.compilePrice(first[field] and tostring(first[field]),aliases);if tree then policy.program=policy.program or {};policy.program.sources=policy.program.sources or {};policy.program.sources[key]=tree end end end
         local side=kind=='Auctioning' and 'sell' or kind=='Shopping' and 'buy'
         local priceKey=side=='sell' and 'minPrice' or 'maxPrice'
         if side and #names==0 then
@@ -261,10 +264,11 @@ function M.applyMigration(p)
         if not key then
           a.ruleSequence=(a.ruleSequence or 0)+1;key=a.ruleSequence
           for _,side in ipairs({'buy','sell'}) do if rule.program[side] then rule.program[side].localPrices=p.localPrices==true end end
-          local combined={buy=rule.program.buy or prior.buy,sell=rule.program.sell or prior.sell}
+          local sources={};for k,v in pairs(prior.sources or {}) do sources[k]=v end;for k,v in pairs(rule.program.sources or {}) do sources[k]=v end
+          local combined={sources=sources,buy=rule.program.buy or prior.buy,sell=rule.program.sell or prior.sell}
           a.rulePrograms[key]=combined;programs[path][prior]=key;if not next(prior) then programs[path].empty=key end
         end
-        g.programID=key
+        g.program=nil;g.programID=key
         if rule.program.buy then g.cap=0;g.buyRealmPct=nil end
         if rule.program.sell then g.realmPct=nil;g.craftPct=nil;g.fixedFloor=nil end
       end

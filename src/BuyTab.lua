@@ -1234,6 +1234,7 @@ local function create()
   scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-135);scroll:SetPoint('BOTTOMRIGHT',-26,4)
   content=CreateFrame('Frame',nil,scroll);content:SetSize(678,1);scroll:SetScrollChild(content)
   panel:SetScript('OnShow',function()
+    if ForeverMarketTools and ForeverMarketTools.updatePrices then ForeverMarketTools.updatePrices(false) end
     if pausedMarket~=GetRealmName() then pausedMarket=nil;remembered,displayOrder,verified={},{},{} end
     running=false;completed=false;fundMessageUntil=0;resume:SetShown(pausedMarket~=nil)
     edit:SetText(fund().cash/10000);target:SetText(ForeverMarketMarginBP()/100);render()

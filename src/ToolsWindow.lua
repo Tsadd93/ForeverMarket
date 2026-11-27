@@ -339,7 +339,7 @@ local function references()
     field:SetText(pack);field:SetFocus();field:HighlightText();return 'Copy the selected pack to share.'
   end)
   action(2,'Import pack',function()
-    local msg=M.importReferencePack(field:GetText());page=1;return msg
+    local raw=field:GetText();local msg=raw:match('^FMREG1 ') and M.importRegionPack(raw) or M.importReferencePack(raw);page=1;return msg
   end)
   action(3,'Ask guild',function()
     local raw=second:GetText()
@@ -354,7 +354,7 @@ local function references()
   for _,r in ipairs(shared) do
     local source=r.regional and 'TSM region' or r.starter and 'bundled realm scan' or 'peer realm scan'
     add(function()return itemName(r.id)end,coins(r.price)..' / '..source..' / '..date('%b %d',r.at),r.regional and 'Sales' or nil,function()
-      return ('TradeSkillMaster regional sample / %.1f%% sale rate / %.2f sold per day'):format(r.rate*100,r.volume)
+      return 'TSM region / sale rate '..(r.rate and ('%.1f%%'):format(r.rate*100) or 'unknown')..' / sold per day '..(r.volume and ('%.2f'):format(r.volume) or 'unknown')
     end)
   end
   if #shared==0 then add('No reference prices','Clear the item filter, ask your guild, paste a pack, or run Market Scan.') end
@@ -363,7 +363,8 @@ local function formulaEditor()
   hint:SetText('Left: item ID or imported group path. Right: price formula in copper, e.g. 80% fmmedian.')
   local target=field:GetText()
   local ids={}
-  local id=tonumber(target:match('item:(%d+)') or target:match('^(%d+)$'))
+  local opID,sourceKey=target:match('^(%d+):([a-z]+)$')
+  local id=tonumber(opID or target:match('item:(%d+)') or target:match('^(%d+)$'))
   if id and id>0 then ids[1]=id elseif target~='' then
     for k,path in pairs(M.session().groupPaths or {}) do
       if path==target or path:sub(1,#target+1)==target..string.char(96) then ids[#ids+1]=k end
@@ -377,6 +378,7 @@ local function formulaEditor()
   action(3,'Preview',function()page=1 end)
   action(4,'Apply formula',function()
     if field:GetText()~=target or second:GetText()~=source then return 'Preview your edits before applying.' end
+    if opID then return M.setOperation(tonumber(opID),sourceKey,source) end
     if target:match('^user_') then return M.setNamedFormula(target,source) end
     if #ids==0 then return 'Enter an item ID or an existing group path.' end
     return M.savePriceProgram(ids,formulaSide,source)
@@ -385,9 +387,14 @@ local function formulaEditor()
     add(function()return itemName(k)end,function()
       local value,why=M.importPrice(k,tree,false)
       return value and value>0 and coins(value) or 'Hold / '..(why or 'nonpositive price')
+    end,'Sources',function()
+      local evidence={};M.importPrice(k,tree,false,evidence);M.previewSources={};M.previewItem=k;M.previewExpression=source;M.previewTarget=target
+      for key in pairs(evidence) do local v,reason,label=M.ruleSource(k,key,false);table.insert(M.previewSources,{key,(v~=nil and tostring(v) or reason or 'unknown')..' / '..(label or 'in-game source')}) end
+      selectTab('Formula sources')
     end)
   end end
   if #ids==0 then
+    add('Set operation source','Use itemID:auctioningopnormal and a formula, then Apply.')
     add('Named formula','Enter user_name at left and an expression at right, then Apply.')
     add('Ordered rules','Separate alternatives with ;  A false condition tries the next rule.')
     for key,expr in pairs(M.account().namedFormulas or {}) do
@@ -455,7 +462,7 @@ refresh=function()
   if not f or not f:IsShown() then return end
   content={};for _,c in ipairs(cards) do c:Hide() end;for _,t in pairs(chart) do t:Hide() end;for _,b in ipairs(actions) do b:Hide() end
   local special=mode=='Run detail' or mode=='Conversion detail' or mode=='Comparison' or mode=='Rule presets' or mode=='Watches' or mode=='Conversions' or mode=='Realm coverage' or mode=='Scan results' or mode=='Sell session'
-  local inputs=mode~='Shopping lists' and (mode~='Farming' or showFarmRoutes) and mode~='Results' and mode~='Home' and mode~='Preview' and (not special or mode=='Watches' or mode=='Comparison' or mode=='Rule presets')
+  local inputs=mode~='Formula sources' and mode~='Shopping lists' and (mode~='Farming' or showFarmRoutes) and mode~='Results' and mode~='Home' and mode~='Preview' and (not special or mode=='Watches' or mode=='Comparison' or mode=='Rule presets')
   field:SetShown(inputs);if viewport then viewport:SetShown(inputs) end;second:SetShown(inputs and mode~='Farming')
   if heading then
     heading:SetShown(not inputs);emblem:SetShown(not inputs)
@@ -472,6 +479,10 @@ refresh=function()
         if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
         f:Hide();M.openAuctionReview()
       end})
+  elseif mode=='Formula sources' then
+    hint:SetText('Prices are in copper. Rates are fractions and quantities are units.');summary:SetText('Sources for this formula')
+    action(1,'Back to formula',function()selectTab('Formula editor',M.previewTarget);second:SetText(M.previewExpression or '')end);action(2,'Set posting rule',function()selectTab('Formula editor',M.previewItem..':auctioningopmin')end)
+    for _,r in ipairs(M.previewSources or {}) do add(r[1],r[2]) end
   elseif mode=='Formula editor' then formulaEditor() elseif mode=='Shared prices' then references() elseif mode=='Shopping lists' then shoppingLists()
   elseif mode=='Home' then home() elseif mode=='Preview' then postingPreview() elseif mode=='Results' then results() elseif mode=='Basket' then basket() elseif mode=='Import' then imports() elseif mode=='Mail & bank' then logistics()
   elseif mode=='Supply plan' then chains() elseif mode=='Farming' then farming()
