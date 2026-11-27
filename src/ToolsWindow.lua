@@ -286,11 +286,11 @@ local function farming()
     showFarmRoutes=not showFarmRoutes;page=1
   end)
   if not showFarmRoutes then
-    hint:SetText('Ranked by estimated AH return per item. Gathering speed and buyer demand can vary.')
+    hint:SetText('Loot and your gathering professions, ranked by estimated AH return per item.')
     local targets=M.farmTargets()
     summary:SetText(#targets>0 and 'Item / estimated net per unit / gathering lead' or 'No recent prices for farmable items. Run Market Scan at an auctioneer.')
     for _,target in ipairs(targets) do
-      add(itemName(target.id),coins(target.net)..' each / '..target.lead,'History',function()
+      add(function()return target.name or itemName(target.id) end,coins(target.net)..' each / '..target.lead,'History',function()
         selectTab('History',target.id)
       end)
     end

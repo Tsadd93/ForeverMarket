@@ -220,3 +220,40 @@ for _,resolution in ipairs({{1920,1080},{3840,2160}}) do
  end
 end
 print('PASS: results cohorts, suffix evidence, nine Tools layouts at two simulated display sizes')
+
+-- Character eligibility must be checked before a recorded route overrides a lead.
+do
+  local saved=a.farming
+  local day=math.floor(now/86400)
+  local history={}
+  for _,id in ipairs({2770,2589,2318,2447,999}) do history[tostring(id)]={day=day,m=100} end
+  ForeverMarketHistory=function()return history end
+  ForeverMarketHasScan=function()return true end
+  a.farming={{label='Old route',items={[2447]={n=1},[999]={n=2,name='Recorded drop',locale='enUS'}}}}
+  local skill=186
+  GetProfessions=function()return nil,4 end
+  GetProfessionInfo=function(slot)assert(slot==4);return nil,nil,nil,nil,nil,nil,skill end
+  local function targets(all)
+    local found={}
+    for _,t in ipairs(M.farmTargets(all)) do found[t.id]=t end
+    return found
+  end
+  local miner=targets()
+  assert(miner[2770].name=='Copper Ore' and miner[2589].name=='Linen Cloth' and miner[999].name=='Recorded drop')
+  assert(not miner[2447] and not miner[2318] and targets(true)[2447])
+  skill=182
+  assert(targets()[2447].name=='Peacebloom' and not targets()[2770])
+  skill=393
+  assert(targets()[2318].name=='Light Leather' and not targets()[2447])
+  skill=202
+  assert(targets()[2589] and not targets()[2770] and not targets()[2447])
+  GetLocale=function()return 'deDE' end
+  assert(targets()[2589].name==nil and targets()[999].name==nil)
+  GetProfessions=nil;GetProfessionInfo=nil
+  GetNumSkillLines=function()return 1 end
+  GetSkillLineInfo=function()return 'Bergbau',nil,nil,1 end
+  C_Spell={GetSpellName=function(id)if id==2575 then return 'Bergbau' end end}
+  assert(targets()[2770] and not targets()[2447])
+  a.farming=saved
+end
+print('PASS: cold farm names, per-character gathering, sparse profession slots, legacy skills and route valuation')

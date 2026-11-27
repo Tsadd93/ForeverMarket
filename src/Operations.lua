@@ -354,29 +354,98 @@ function M.historySeries(id,days)
   return series
 end
 
--- Baseline gathering leads. A recorded route takes precedence for its item.
+-- English catalogue names let cold-cache clients draw the first page immediately.
+-- Skill-line IDs come from the character, independent of the open crafting window.
 local farmLeads={
-  [2770]='Mining: copper veins', [2771]='Mining: Hillsbrad Foothills',
-  [2772]='Mining: iron deposits', [3858]='Mining: The Hinterlands',
-  [10620]='Mining: thorium veins',
-  [2589]='Loot: low-level humanoids', [2592]='Loot: humanoids (wool)',
-  [4306]='Loot: humanoids (silk)', [4338]='Loot: humanoids (mageweave)',
-  [14047]='Loot: high-level humanoids',
-  [2318]='Skinning: low-level beasts', [2319]='Skinning: medium leather',
-  [4234]='Skinning: heavy leather', [4304]='Skinning: thick leather',
-  [8170]='Skinning: high-level beasts',
+  [2770]={name="Copper Ore", lead="Mining: copper veins", skill=186},
+  [2771]={name="Tin Ore", lead="Mining: Hillsbrad Foothills", skill=186},
+  [2772]={name="Iron Ore", lead="Mining: iron deposits", skill=186},
+  [3858]={name="Mithril Ore", lead="Mining: The Hinterlands", skill=186},
+  [10620]={name="Thorium Ore", lead="Mining: thorium veins", skill=186},
+  [2589]={name="Linen Cloth", lead="Loot: low-level humanoids"},
+  [2592]={name="Wool Cloth", lead="Loot: humanoids (wool)"},
+  [4306]={name="Silk Cloth", lead="Loot: humanoids (silk)"},
+  [4338]={name="Mageweave Cloth", lead="Loot: humanoids (mageweave)"},
+  [14047]={name="Runecloth", lead="Loot: high-level humanoids"},
+  [2318]={name="Light Leather", lead="Skinning: low-level beasts", skill=393},
+  [2319]={name="Medium Leather", lead="Skinning: medium leather", skill=393},
+  [4234]={name="Heavy Leather", lead="Skinning: heavy leather", skill=393},
+  [4304]={name="Thick Leather", lead="Skinning: thick leather", skill=393},
+  [8170]={name="Rugged Leather", lead="Skinning: high-level beasts", skill=393},
+  [765]={name="Silverleaf", lead="Herbalism: gather this herb", skill=182},
+  [2447]={name="Peacebloom", lead="Herbalism: gather this herb", skill=182},
+  [2449]={name="Earthroot", lead="Herbalism: gather this herb", skill=182},
+  [785]={name="Mageroyal", lead="Herbalism: gather this herb", skill=182},
+  [2450]={name="Briarthorn", lead="Herbalism: gather this herb", skill=182},
+  [2452]={name="Swiftthistle", lead="Herbalism: gather this herb", skill=182},
+  [2453]={name="Bruiseweed", lead="Herbalism: gather this herb", skill=182},
+  [3820]={name="Stranglekelp", lead="Herbalism: gather this herb", skill=182},
+  [3355]={name="Wild Steelbloom", lead="Herbalism: gather this herb", skill=182},
+  [3356]={name="Kingsblood", lead="Herbalism: gather this herb", skill=182},
+  [3357]={name="Liferoot", lead="Herbalism: gather this herb", skill=182},
+  [3358]={name="Khadgar's Whisker", lead="Herbalism: gather this herb", skill=182},
+  [3818]={name="Fadeleaf", lead="Herbalism: gather this herb", skill=182},
+  [3819]={name="Wintersbite", lead="Herbalism: gather this herb", skill=182},
+  [3821]={name="Goldthorn", lead="Herbalism: gather this herb", skill=182},
+  [4625]={name="Firebloom", lead="Herbalism: gather this herb", skill=182},
+  [8831]={name="Purple Lotus", lead="Herbalism: gather this herb", skill=182},
+  [8836]={name="Arthas' Tears", lead="Herbalism: gather this herb", skill=182},
+  [8838]={name="Sungrass", lead="Herbalism: gather this herb", skill=182},
+  [8839]={name="Blindweed", lead="Herbalism: gather this herb", skill=182},
+  [8845]={name="Ghost Mushroom", lead="Herbalism: gather this herb", skill=182},
+  [8846]={name="Gromsblood", lead="Herbalism: gather this herb", skill=182},
+  [13463]={name="Dreamfoil", lead="Herbalism: gather this herb", skill=182},
+  [13464]={name="Golden Sansam", lead="Herbalism: gather this herb", skill=182},
+  [13465]={name="Mountain Silversage", lead="Herbalism: gather this herb", skill=182},
+  [13466]={name="Plaguebloom", lead="Herbalism: gather this herb", skill=182},
+  [13467]={name="Icecap", lead="Herbalism: gather this herb", skill=182},
+  [13468]={name="Black Lotus", lead="Herbalism: gather this herb", skill=182},
 }
-for _,id in ipairs({765,2447,2449,785,2450,2452,2453,3820,3355,3356,3357,
-  3358,3818,3819,3821,4625,8831,8836,8838,8839,8845,8846,13463,13464,
-  13465,13466,13467,13468}) do farmLeads[id]='Herbalism: gather this herb' end
+local function learnedProfessions()
+  local learned={}
+  if GetProfessions and GetProfessionInfo then
+    -- The client can return empty slots before an occupied one.
+    for _,slot in pairs({GetProfessions()}) do
+      local skill=select(7,GetProfessionInfo(slot))
+      if skill then learned[skill]=true end
+    end
+  elseif GetNumSkillLines and GetSkillLineInfo then
+    -- Older clients expose localized skill names rather than profession slots.
+    local names={Mining=186,Herbalism=182,Skinning=393}
+    for spell,skill in pairs({[2575]=186,[2366]=182,[8613]=393}) do
+      local name=C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spell)
+        or GetSpellInfo and GetSpellInfo(spell)
+      if name then names[name]=skill end
+    end
+    for i=1,GetNumSkillLines() do
+      local name,_,_,rank=GetSkillLineInfo(i)
+      if names[name] and rank and rank>0 then learned[names[name]]=true end
+    end
+  end
+  return learned
+end
 
-function M.farmTargets()
+function M.farmTargets(forRouteValuation)
   if ForeverMarketHasScan and not ForeverMarketHasScan() then return {} end
-  local leads={}
-  for id,lead in pairs(farmLeads) do leads[id]=lead end
+  local learned=not forRouteValuation and learnedProfessions()
+  local locale=GetLocale and GetLocale() or 'enUS'
+  local english=locale=='enUS' or locale=='enGB'
+  local leads,names={},{}
+  for id,entry in pairs(farmLeads) do
+    if forRouteValuation or not entry.skill or learned[entry.skill] then
+      leads[id]=entry.lead
+      names[id]=english and entry.name or nil
+    end
+  end
   for _,session in ipairs(M.account().farming or {}) do
-    for id,item in pairs(session.items or {}) do
-      if tonumber(id) and (item.n or 0)>0 then leads[tonumber(id)]='Recorded: '..session.label end
+    for key,item in pairs(session.items or {}) do
+      local id=tonumber(key)
+      -- A route recorded before unlearning a profession still has historical value.
+      -- It cannot make a profession-gated item eligible as a current gathering lead.
+      if id and (item.n or 0)>0 and (leads[id] or not farmLeads[id]) then
+        leads[id]='Recorded: '..session.label
+        if item.locale==locale and item.name then names[id]=item.name end
+      end
     end
   end
   local history=ForeverMarketHistory()
@@ -394,7 +463,7 @@ function M.farmTargets()
       table.sort(prices)
       local n=#prices
       local reference=n>0 and (prices[math.ceil(n/2)]+prices[math.floor(n/2)+1])/2 or latest
-      rows[#rows+1]={id=id,lead=lead,net=ForeverMarketSaleNet(math.min(latest,reference)),days=n}
+      rows[#rows+1]={id=id,name=names[id],lead=lead,net=ForeverMarketSaleNet(math.min(latest,reference)),days=n}
     end
   end
   table.sort(rows,function(a,b)
@@ -407,7 +476,7 @@ end
 
 function M.farmRouteRanks()
   local prices,routes,sorted={},{},{}
-  for _,item in ipairs(M.farmTargets()) do prices[item.id]=item.net end
+  for _,item in ipairs(M.farmTargets(true)) do prices[item.id]=item.net end
   for _,s in ipairs(M.account().farming or {}) do
     if s.elapsed and s.elapsed>0 then
       local key=(s.zone or '')..'|'..s.label
@@ -419,7 +488,7 @@ function M.farmRouteRanks()
       r.seconds=r.seconds+s.elapsed;r.runs=r.runs+1;r.paid=r.paid+(s.returned or 0);r.vendor=r.vendor+(s.vendor or 0)
       for id,item in pairs(s.items or {}) do
         local lead=farmLeads[tonumber(id)]
-        local method=lead and lead:match('^([^:]+)')
+        local method=lead and lead.lead:match('^([^:]+)')
         if method then r.methods[method]=true end
         local n=item.n or 0;r.units=r.units+n
         if prices[tonumber(id)] then r.priced=r.priced+n;r.value=r.value+n*prices[tonumber(id)] end
@@ -450,11 +519,13 @@ function M.farmStop()
   if not s then return 'No active session.' end
   s.elapsed=math.max(1,time()-s.at);a.farmActive=nil;return 'Saved '..s.label
 end
-function M.farmLoot(id,n)
+function M.farmLoot(id,n,lootName)
   local a=M.account();local s=sessions()[a.farmActive]
   if not s then return end
   local r=s.items[id] or {n=0,held=0};s.items[id]=r;r.n=r.n+n;r.held=r.held+n
-  local vendor=select(11,C_Item.GetItemInfo(id));local price=M.prices(id)
+  local name,_,_,_,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(id)
+  if lootName or name then r.name=lootName or name;r.locale=GetLocale and GetLocale() or 'enUS' end
+  local price=M.prices(id)
   if vendor then s.vendor=(s.vendor or 0)+vendor*n else s.unknownVendor=(s.unknownVendor or 0)+n end
   if price then s.market=(s.market or 0)+ForeverMarketSaleNet(price*n) else s.unknown=(s.unknown or 0)+n end
 end
@@ -566,7 +637,7 @@ events:SetScript('OnEvent',function(_,ev,msg)
     for _,fmt in ipairs({LOOT_ITEM_SELF_MULTIPLE or '',LOOT_ITEM_SELF or ''}) do
       local link,n=msg:match(lootPattern(fmt))
       local id=link and tonumber(link:match('item:(%d+)'))
-      if id then M.farmLoot(id,tonumber(n) or 1);break end
+      if id then M.farmLoot(id,tonumber(n) or 1,link:match('|h%[(.-)%]|h'));break end
     end
   end
 end)
