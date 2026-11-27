@@ -4,7 +4,7 @@ from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 root = Path(__file__).resolve().parent
 toc = (root / "ForeverMarket.toc").read_bytes()
 version = next(s.split(": ", 1)[1] for s in toc.decode().splitlines() if s.startswith("## Version:"))
-modules = "Starter ItemNames History Market Valuation Crafting Activity Snapshot Scan Bags SellTab BuyTab Workshop Manager TradeDesk Operations MarketDesk Session PublicPrices CancelQueue PriceRules Migration SessionViews ToolsWindow Dashboard Version".split()
+modules = "Starter RegionalPrices ItemNames History Market Valuation Crafting Activity Snapshot Scan Bags SellTab BuyTab Workshop Manager TradeDesk Operations MarketDesk Session PublicPrices CancelQueue PriceRules Migration MarketAnalysis SessionViews ToolsWindow Dashboard Version".split()
 sections = []
 for library, license_name in (("LibDeflate", "LICENSE.txt"), ("LibSerialize", "LICENSE")):
     folder = root / "vendor" / library

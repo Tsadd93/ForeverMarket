@@ -26,6 +26,7 @@ local function data(view)
   local cutoff=time()-view.days*86400
   if section=='Overview' then
     if ForeverMarketHasScan and not ForeverMarketHasScan() then
+      add('Browse shared references','View dated realm prices before your first scan.',tool('Shared prices'))
       add('Run your first Market Scan','Visit an auctioneer to unlock local prices and recommendations.',function()
         if AuctionHouseFrame and AuctionHouseFrame:IsShown() then view.frame:Hide();ForeverMarketScan() end
       end)

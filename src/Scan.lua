@@ -13,7 +13,7 @@ local function begin()
   step=ForeverMarketReadySnapshot and ForeverMarketReadySnapshot() and 'start' or 'snapshot'
   count=0;last=GetTime()
   setScanning(true)
-  status:SetText('Waiting for the auction house…')
+  status:SetText('Waiting for the auction houseâ€¦')
 end
 ForeverMarketScan=begin
 local function create()
@@ -43,6 +43,34 @@ local function create()
   local records,page,rows={},1,{}
   local capacity=10
   local pageLabel=label(506,-69,103)
+  local columns={{'Item',0},{'Supply',245},{'Lowest / item',310},{'Bulk / item',462},{'Observed',616}}
+  local keys={'name','qty','low','bulk','seen'}
+  local key,descending='qty',true
+  local sourceLabel='Saved observations'
+  local model,marketHistory
+  local function relative(r)
+    if not model or not r.low or r.pet then return end
+    if r.stats==nil then r.stats=ForeverMarketTools.priceStatistics(r.historyKey or r.id,30,marketHistory) or false end
+    if r.stats then return r.low/r.stats[model] end
+  end
+  local function sortRows()
+    if key=='name' then
+      for _,r in ipairs(records) do r.name=r.pet and ('Battle pet #'..r.pet) or C_Item.GetItemNameByID(r.id) or ('Item '..r.id) end
+    end
+    if key=='relative' then for _,r in ipairs(records) do r.relative=relative(r) end end
+    table.sort(records,function(a,b)
+      local x,y=a[key],b[key]
+      if x~=y then
+        if x==nil then return false elseif y==nil then return true end
+        if descending then return x>y end
+        return x<y
+      end
+      if (a.id or 0)~=(b.id or 0) then return (a.id or 0)<(b.id or 0) end
+      return tostring(a.level or a.pet or '')<tostring(b.level or b.pet or '')
+    end)
+    heading:SetText(#records==0 and 'Your first scan will fill this price list.' or
+      ('%s  /  %d items by %s'):format(sourceLabel,#records,key=='qty' and 'supply' or key))
+  end
   local previous,nextPage
   local function paint()
     local pages=math.max(1,math.ceil(#records/capacity))
@@ -53,16 +81,32 @@ local function create()
       local name=e and (e.pet and ('Battle pet #'..e.pet) or C_Item.GetItemNameByID(e.id) or ('Item #'..e.id))
       if e and e.level then name=name..' ('..e.level..')' end
       ForeverMarketSetItemText(r[1],e and (ForeverMarketRowIcon and ForeverMarketRowIcon(e.id,name) or name) or '')
-      r[2]:SetText(e and tostring(e.qty or '—') or '')
+      r[2]:SetText(e and tostring(e.qty or 'â€”') or '')
       r[3]:SetText(e and ForeverMarketCoins(e.low) or '')
-      r[4]:SetText(e and (e.bulk and ForeverMarketCoins(e.bulk) or '—') or '')
-      r[5]:SetText(e and e.seen and date('%b %d',e.seen) or '')
+      r[4]:SetText(e and (e.bulk and ForeverMarketCoins(e.bulk) or 'â€”') or '')
+      local ratio=e and relative(e)
+      r[5]:SetText(e and (model and (ratio and ('%.0f%%'):format(ratio*100) or 'No history') or e.seen and date('%b %d',e.seen)) or '')
+      if r[5].SetTextColor then
+        if ratio and ratio<.9 then r[5]:SetTextColor(.4,1,.55)
+        elseif ratio and ratio>1.1 then r[5]:SetTextColor(1,.66,.45)
+        else r[5]:SetTextColor(1,1,1) end
+      end
       r.item=e and e.id
     end
   end
   previous=button('Previous',433,-62,68,function()page=page-1;paint()end)
   nextPage=button('Next',612,-62,65,function()page=page+1;paint()end)
-  ForeverMarketResults(panel,91,{{'Item',0},{'Supply',245},{'Lowest / item',310},{'Bulk / item',462},{'Observed',616}})
+  local headers=ForeverMarketResults(panel,91,columns)
+  button('Compare asks',285,-63,114,function(self)
+    local nextModel={median='ema',ema='filtered',filtered=false}
+    if model then model=nextModel[model] else model='median' end
+    keys[5]=model and 'relative' or 'seen'
+    if key=='relative' or key=='seen' then key=keys[5] end
+    if headers then headers[5].fmTitle:SetText(model and '% of model' or 'Observed') end
+    self:SetText(model and ('vs '..model) or 'Compare asks')
+    page=1;sortRows();paint()
+  end)
+  heading:SetWidth(262)
   for i=1,capacity do
     local y=-117-(i-1)*26
     ForeverMarketRowArt(panel,y+3,700,i)
@@ -74,11 +118,47 @@ local function create()
     item:SetScript('OnEnter',function(self)
       if row.item then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink('item:'..row.item);GameTooltip:AddLine('Click for price history');GameTooltip:Show() end
     end)
-    item:SetScript('OnLeave',function()GameTooltip:Hide()end)
+    item:SetScript('OnLeave',function()GameTooltip:Hide()end);row.hit=item
+  end
+  if headers then
+    local edges={0,245,310,462,616}
+    local prefs=ForeverMarketDB.scanColumns or {};ForeverMarketDB.scanColumns=prefs
+    local function layout()
+      local right=math.max(690,panel:GetWidth()-4)
+      for i=2,5 do
+        edges[i]=math.max(edges[i-1]+60,math.min(tonumber(prefs[i]) or columns[i][2],right-(6-i)*60))
+      end
+      for i,h in ipairs(headers) do
+        local w=(edges[i+1] or right)-edges[i]
+        h:ClearAllPoints();h:SetPoint('TOPLEFT',edges[i],-91);h:SetWidth(w)
+        for j,row in ipairs(rows) do
+          row[i]:ClearAllPoints();row[i]:SetPoint('TOPLEFT',edges[i]+8,-117-(j-1)*26);row[i]:SetWidth(w-14)
+          if i==1 then row.hit:SetWidth(w-14) end
+        end
+      end
+    end
+    for i,h in ipairs(headers) do
+      h:EnableMouse(true)
+      h:SetScript('OnMouseDown',function(self,button)
+        if button=='RightButton' and i<5 then self.dragStart=GetCursorPosition();self.startEdge=edges[i+1] end
+      end)
+      h:SetScript('OnMouseUp',function(self,button)
+        if button=='RightButton' and self.dragStart then
+          prefs[i+1]=math.max(edges[i]+60,math.min((edges[i+2] or math.max(690,panel:GetWidth()-4))-60,self.startEdge+(GetCursorPosition()-self.dragStart)/panel:GetEffectiveScale()))
+          self.dragStart=nil;layout()
+        elseif button=='LeftButton' then
+          if key==keys[i] then descending=not descending else key=keys[i];descending=i~=1 end
+          page=1;sortRows();paint()
+        end
+      end)
+      h:SetScript('OnEnter',function(self)GameTooltip:SetOwner(self,'ANCHOR_TOP');GameTooltip:AddLine('Click to sort. Right-drag to resize.');GameTooltip:Show()end)
+      h:SetScript('OnLeave',function()GameTooltip:Hide()end)
+    end
+    layout();panel:HookScript('OnSizeChanged',layout)
   end
   refreshTable=function(snapshot)
     records={};page=1
-    local history=ForeverMarketHistory()
+    local history=ForeverMarketHistory();marketHistory=history
     if snapshot then
       for id,book in pairs(snapshot.books) do
         records[#records+1]={id=id,seen=time()-math.floor(GetTime()-snapshot.at),qty=book.quantity,low=book.low,bulk=book.floorPrice}
@@ -90,18 +170,13 @@ local function create()
         local pet=raw:match('^p:(%d+)$')
         id=tonumber(id or raw)
         if (id or pet) and h.m and h.m>0 then
-          records[#records+1]={id=id,pet=pet,level=level,low=h.m,qty=h.a and h.a[h.day],
+          records[#records+1]={id=id,historyKey=key,pet=pet,level=level,low=h.m,qty=h.a and h.a[h.day],
             bulk=h.bulk and h.bulk.at and math.floor(h.bulk.at/86400)==h.day and h.bulk.price,seen=h.day and h.day*86400+43200}
         end
       end
     end
-    table.sort(records,function(a,b)
-      if (a.qty or 0)~=(b.qty or 0) then return (a.qty or 0)>(b.qty or 0) end
-      if (a.id or 0)~=(b.id or 0) then return (a.id or 0)<(b.id or 0) end
-      return (a.level or a.pet or '')<(b.level or b.pet or '')
-    end)
-    heading:SetText(#records==0 and 'Your first scan will fill this price list.' or
-      ('%s  /  %d items by supply'):format(snapshot and 'Market snapshot' or 'Saved observations',#records))
+    sourceLabel=snapshot and 'Market snapshot' or 'Saved observations'
+    sortRows()
     paint()
   end
   panel:SetScript('OnShow',function()refreshTable()end)
@@ -111,16 +186,16 @@ local function create()
     if step=='snapshot' then
       local data,state
       if ForeverMarketSnapshot then data,state=ForeverMarketSnapshot() end
-      if data and data.at>=last then if ForeverMarketScanCompleted then ForeverMarketScanCompleted() end;refreshTable(data);finish(('Snapshot ready · %d auction rows · %ds old'):format(data.rows,GetTime()-data.at));return end
+      if data and data.at>=last then if ForeverMarketScanCompleted then ForeverMarketScanCompleted() end;refreshTable(data);finish(('Snapshot ready Â· %d auction rows Â· %ds old'):format(data.rows,GetTime()-data.at));return end
       if state=='pending' or state=='throttled' and GetTime()-last<20 then
         local done,total
         if ForeverMarketSnapshotProgress then done,total=ForeverMarketSnapshotProgress() end
-        status:SetText(total and ('Reading auctions  /  %d of %d rows'):format(done,total) or 'Waiting for the realm snapshot…');return
+        status:SetText(total and ('Reading auctions  /  %d of %d rows'):format(done,total) or 'Waiting for the realm snapshotâ€¦');return
       end
-      step='start';last=GetTime();status:SetText('Requesting fresh auction listings…')
+      step='start';last=GetTime();status:SetText('Requesting fresh auction listingsâ€¦')
     end
     if step and not api.IsThrottledMessageSystemReady() then
-      status:SetText('Waiting for the auction house to accept the next request…');last=GetTime();return
+      status:SetText('Waiting for the auction house to accept the next requestâ€¦');last=GetTime();return
     end
     if GetTime()-last>20 then finish('Auction house timed out. Click Scan market to retry.');return end
     if step and api.IsThrottledMessageSystemReady() then

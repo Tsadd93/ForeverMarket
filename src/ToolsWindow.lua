@@ -4,6 +4,7 @@ local rows,actions,chart,nav,cards={}, {}, {},{},{}
 local resultDays,invest=7,false
 local mode,page,days='Basket',1,7
 local preview,chain,lastQuote,compareID
+local formulaSide,historyModel,historyStats="buy","median",false
 local content={}
 local function coins(n) return n and ForeverMarketCoins(math.floor(n)) or 'unknown' end
 local function itemName(id) return C_Item.GetItemNameByID(id) or ('Item '..id) end
@@ -314,6 +315,86 @@ local function openAH(key)
   if not ForeverMarketPages or not ForeverMarketPages[key] then return 'This page is still loading.' end
   f:Hide();ForeverMarketPages[key]()
 end
+local function shoppingLists()
+  M.restockList()
+  local m=M.account().manager
+  hint:SetText('Choose a saved list to check its missing items at the auction house.')
+  summary:SetText('Shopping lists')
+  action(1,'Edit active list',function()selectTab('Basket')end)
+  action(2,'Sell from bags',function()return openAH('ForeverMarketSell')end)
+  local names={};for name in pairs(m.lists) do names[#names+1]=name end;table.sort(names)
+  for _,name in ipairs(names) do
+    local n=0;for _ in pairs(m.lists[name]) do n=n+1 end
+    add(name,n..' exact item targets','Shop',function()
+      m.active=name;M.invalidate();selectTab('Basket');return M.runBasket()
+    end)
+  end
+end
+local function references()
+  hint:SetText('Paste a price pack at left, or enter an item ID at right and ask your guild.')
+  summary:SetText('Reference prices only. Run your own scan for trading advice.')
+  action(1,'Copy local prices',function()
+    local pack,why=M.exportReferencePack()
+    if not pack then return why end
+    field:SetText(pack);field:SetFocus();field:HighlightText();return 'Copy the selected pack to share.'
+  end)
+  action(2,'Import pack',function()
+    local msg=M.importReferencePack(field:GetText());page=1;return msg
+  end)
+  action(3,'Ask guild',function()
+    local raw=second:GetText()
+    return M.requestGuildPrice(tonumber(raw:match('item:(%d+)') or raw))
+  end)
+  action(4,ForeverMarketDB.shareGuildPrices and 'Guild replies: on' or 'Guild replies: off',function()
+    ForeverMarketDB.shareGuildPrices=not ForeverMarketDB.shareGuildPrices
+  end)
+  local raw=second:GetText()
+  local id=tonumber(raw:match('item:(%d+)') or raw)
+  local shared=M.sharedReferences(id)
+  for _,r in ipairs(shared) do
+    local source=r.regional and 'TSM region' or r.starter and 'bundled realm scan' or 'peer realm scan'
+    add(function()return itemName(r.id)end,coins(r.price)..' / '..source..' / '..date('%b %d',r.at),r.regional and 'Sales' or nil,function()
+      return ('TradeSkillMaster regional sample / %.1f%% sale rate / %.2f sold per day'):format(r.rate*100,r.volume)
+    end)
+  end
+  if #shared==0 then add('No reference prices','Clear the item filter, ask your guild, paste a pack, or run Market Scan.') end
+end
+local function formulaEditor()
+  hint:SetText('Left: item ID or imported group path. Right: price formula in copper, e.g. 80% fmmedian.')
+  local target=field:GetText()
+  local ids={}
+  local id=tonumber(target:match('item:(%d+)') or target:match('^(%d+)$'))
+  if id and id>0 then ids[1]=id elseif target~='' then
+    for k,path in pairs(M.session().groupPaths or {}) do
+      if path==target or path:sub(1,#target+1)==target..string.char(96) then ids[#ids+1]=k end
+    end
+    table.sort(ids)
+  end
+  local source=second:GetText();local tree,err=M.customProgram(source)
+  summary:SetText((formulaSide=='buy' and 'Buying ceiling' or 'Posting floor')..' / '..#ids..' items / '..(tree and 'Preview below' or tostring(err)))
+  action(1,formulaSide=='buy' and 'Buy (selected)' or 'Buy',function()formulaSide='buy';page=1 end)
+  action(2,formulaSide=='sell' and 'Sell (selected)' or 'Sell',function()formulaSide='sell';page=1 end)
+  action(3,'Preview',function()page=1 end)
+  action(4,'Apply formula',function()
+    if field:GetText()~=target or second:GetText()~=source then return 'Preview your edits before applying.' end
+    if target:match('^user_') then return M.setNamedFormula(target,source) end
+    if #ids==0 then return 'Enter an item ID or an existing group path.' end
+    return M.savePriceProgram(ids,formulaSide,source)
+  end)
+  if tree then for _,k in ipairs(ids) do
+    add(function()return itemName(k)end,function()
+      local value,why=M.importPrice(k,tree,false)
+      return value and value>0 and coins(value) or 'Hold / '..(why or 'nonpositive price')
+    end)
+  end end
+  if #ids==0 then
+    add('Named formula','Enter user_name at left and an expression at right, then Apply.')
+    add('Ordered rules','Separate alternatives with ;  A false condition tries the next rule.')
+    for key,expr in pairs(M.account().namedFormulas or {}) do
+      add(key,expr,'Edit',function()field:SetText(key);second:SetText(expr);page=1 end)
+    end
+    add('Inventory condition','iflt(fmbags, 20, 80% fmmedian, 1c)');add('Common sources','fmrealm, fmmedian, fmema, fmfiltered, fmbags, fmsold, fmexpires') end
+end
 local function home()
   hint:SetText('Choose what you came to do. Buying and posting always require your click.')
   summary:SetText('At the auction house')
@@ -325,6 +406,9 @@ local function home()
   local s=ForeverMarketPostingPreview and ForeverMarketPostingPreview()
   local deals=M.visibleDeals
   local count=deals and GetTime()-deals.at<60 and deals.scope==ForeverMarketVenueRealm() and deals.count
+  add('Saved shopping lists','Choose a list and start checking it in one click.','Shop',function()selectTab('Shopping lists')end)
+  add('Shared realm prices','Exchange dated reference prices with other players.','Open',function()selectTab('Shared prices')end)
+  add('Custom price rules','Preview a formula for an item or group.','Edit',function()selectTab('Formula editor')end)
   add('Sell from my bags',s and (s.ready..' stacks ready / '..s.checking..' checking prices') or 'Check prices, choose quantities, then post.','Sell',function()return openAH('ForeverMarketSell')end)
   add('Find a deal',count and count>0 and (count..' recently verified deals. Check the current offer.') or 'Set your fund and return target, then start a scan.','Buy',function()return openAH('ForeverMarketBuy')end)
   add('Review my auctions','Check undercuts, returns and expected proceeds.','Review',function()
@@ -371,11 +455,11 @@ refresh=function()
   if not f or not f:IsShown() then return end
   content={};for _,c in ipairs(cards) do c:Hide() end;for _,t in pairs(chart) do t:Hide() end;for _,b in ipairs(actions) do b:Hide() end
   local special=mode=='Run detail' or mode=='Conversion detail' or mode=='Comparison' or mode=='Rule presets' or mode=='Watches' or mode=='Conversions' or mode=='Realm coverage' or mode=='Scan results' or mode=='Sell session'
-  local inputs=(mode~='Farming' or showFarmRoutes) and mode~='Results' and mode~='Home' and mode~='Preview' and (not special or mode=='Watches' or mode=='Comparison' or mode=='Rule presets')
+  local inputs=mode~='Shopping lists' and (mode~='Farming' or showFarmRoutes) and mode~='Results' and mode~='Home' and mode~='Preview' and (not special or mode=='Watches' or mode=='Comparison' or mode=='Rule presets')
   field:SetShown(inputs);if viewport then viewport:SetShown(inputs) end;second:SetShown(inputs and mode~='Farming')
   if heading then
     heading:SetShown(not inputs);emblem:SetShown(not inputs)
-    heading:SetText(mode=='Farming' and 'What to farm' or special and mode or mode=='Home' and 'Auction house' or mode=='Results' and 'Trading results' or 'Posting preview')
+    heading:SetText(mode=='Shopping lists' and 'Saved shopping lists' or mode=='Farming' and 'What to farm' or special and mode or mode=='Home' and 'Auction house' or mode=='Results' and 'Trading results' or 'Posting preview')
     emblem:SetTexture(mode=='Preview' and 'Interface\\Icons\\INV_Letter_15' or mode=='Home' and 'Interface\\Icons\\INV_Misc_Coin_01' or 'Interface\\Icons\\INV_Misc_Book_09')
   end
   if special then
@@ -388,14 +472,36 @@ refresh=function()
         if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
         f:Hide();M.openAuctionReview()
       end})
+  elseif mode=='Formula editor' then formulaEditor() elseif mode=='Shared prices' then references() elseif mode=='Shopping lists' then shoppingLists()
   elseif mode=='Home' then home() elseif mode=='Preview' then postingPreview() elseif mode=='Results' then results() elseif mode=='Basket' then basket() elseif mode=='Import' then imports() elseif mode=='Mail & bank' then logistics()
   elseif mode=='Supply plan' then chains() elseif mode=='Farming' then farming()
   else
     hint:SetText('Item ID or name at left. Daily price and supply use separate scales; empty days have no observation.')
     action(1,'7 days',function()days=7;page=1 end);action(2,'30 days',function()days=30;page=1 end)
-    local id=itemID(field:GetText());if id then plot(id) else summary:SetText('Enter an item to view its market history.') end
+    action(3,historyStats and 'Show chart' or 'Price analysis',function()historyStats=not historyStats;page=1 end)
+    local id=itemID(field:GetText())
+    if not id then summary:SetText('Enter an item to view its market history.')
+    elseif not historyStats then plot(id)
+    else
+      local models={'median','mean','ema','filtered'}
+      action(4,'Model: '..historyModel,function()
+        for i,key in ipairs(models) do if key==historyModel then historyModel=models[i%#models+1];break end end
+      end)
+      local s=M.priceStatistics(id,days)
+      if not s then summary:SetText('No observed bulk-price days in this period.')
+      else
+        ForeverMarketSetItemText(summary,itemName(id)..' / '..s.n..' observed days / '..historyModel..' '..coins(s[historyModel]))
+        add('Middle 50% of daily asks',coins(s.q1)..' to '..coins(s.q3))
+        add('Outlier-filtered mean',coins(s.filtered)..' / '..s.excluded..' days outside IQR fences')
+        local maxCount=math.max(unpack(s.bins))
+        for i,n in ipairs(s.bins) do
+          local low=s.low+(i-1)*s.width
+          if low<=s.high then add(coins(low)..' - '..coins(math.min(s.high,low+s.width-1)),string.rep('=',math.floor(n/maxCount*22+.5))..'  '..n..' days') end
+        end
+      end
+    end
   end
-  local history=mode=='History'
+  local history=mode=='History' and not historyStats
   local cardView=mode=='Results' and cards[1] and cards[1]:IsShown()
   local per=history and 3 or cardView and 5 or 8
   local pages=math.max(1,math.ceil(#content/per));page=math.max(1,math.min(page,pages));pager:SetText(page..' / '..pages)
@@ -417,12 +523,13 @@ selectTab=function(tab,value)
   if M.monitorPrices then M.monitorPrices(false) end
   M.cancelMaterial();mode=tab;page=1;
   for key,b in pairs(nav) do if b.SetEnabled then b:SetEnabled(key~=tab) end end
+  if tab=='History' then historyStats=false end
   if tab=='Farming' then showFarmRoutes=false end
   preview=nil;chain=nil;field:SetText(value and tostring(value) or '');second:SetText(tab=='Supply plan' and '1' or '')
   if tab=='Comparison' or tab=='Run detail' or tab=='Conversion detail' then compareID=value;field:SetText('') end
   if tab=='Basket' then M.restockList();field:SetText(M.account().manager.active) end
   if tab=='Import' then second:SetText('Imported') end
-  field:SetMultiLine(tab=='Import' or tab=='Comparison');if viewport then viewport:SetVerticalScroll(0) end;field:ClearFocus();second:ClearFocus()
+  field:SetMultiLine(tab=='Shared prices' or tab=='Import' or tab=='Comparison');if viewport then viewport:SetVerticalScroll(0) end;field:ClearFocus();second:ClearFocus()
   message:SetText('');refresh()
   if tab=='Import' and value then field:SetFocus();field:HighlightText() end
 end
@@ -472,6 +579,7 @@ function M.openTools(tab,value)
     f:SetScript('OnHide',function()if M.monitorPrices then M.monitorPrices(false) end;if M.quote and (M.quote.trip or M.quote.watch) then M.cancelMaterial() end end)
     local t,sellUpdate=0,0
     f:SetScript('OnUpdate',function(_,dt)
+      if mode=='Shared prices' and M.peerPricesChanged then M.peerPricesChanged=nil;refresh() end
       if mode=='Realm coverage' and M.coverageTick() then refresh() end
       if mode=='Basket' and M.stepBasket then M.stepBasket() end
       t=t+dt;if t<.4 then return end;t=0

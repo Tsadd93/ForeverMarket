@@ -83,6 +83,7 @@ function ForeverMarketResults(panel,top,columns)
   if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo('auctionhouse-background-index') then
     bg:SetAtlas('auctionhouse-background-index')
   else bg:SetTexture('Interface\\FrameGeneral\\UI-Background-Marble') end
+  local headers={}
   for i,c in ipairs(columns) do
     local h=CreateFrame('Frame',nil,panel,'BackdropTemplate')
     h:SetPoint('TOPLEFT',c[2],-top)
@@ -91,8 +92,9 @@ function ForeverMarketResults(panel,top,columns)
     h:SetBackdrop({bgFile='Interface\\Buttons\\WHITE8X8',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',edgeSize=8,insets={left=2,right=2,top=2,bottom=2}})
     h:SetBackdropColor(.15,.13,.11,.96);h:SetBackdropBorderColor(.58,.55,.49,.85)
     local title=h:CreateFontString(nil,'OVERLAY','GameFontNormalSmall')
-    title:SetPoint('LEFT',8,0);title:SetPoint('RIGHT',-5,0);title:SetJustifyH('LEFT');title:SetWordWrap(false);title:SetTextColor(1,.97,.87);title:SetText(c[1])
+    title:SetPoint('LEFT',8,0);title:SetPoint('RIGHT',-5,0);title:SetJustifyH('LEFT');title:SetWordWrap(false);title:SetTextColor(1,.97,.87);title:SetText(c[1]);h.fmTitle=title;headers[i]=h
   end
+  return headers
 end
 function ForeverMarketHover(parent,y,width,row)
   local hit=CreateFrame('Button',nil,parent)
@@ -240,6 +242,10 @@ SLASH_FOREVERMARKET1='/fm'
 local commandHelp={
   {'/fm, /fm dash, /fm dashboard','Open your dashboard and settings.'},
   {'/fm help, /fm commands','Show this command list.'},
+  {'/fm sell','Open Market Sell at the auctioneer.'},
+  {'/fm shop','Open saved shopping lists.'},
+  {'/fm rules','Write a buying ceiling or posting floor for an item or group.'},
+  {'/fm references','View and share dated realm price references.'},
   {'/fm tools, /fm home','Open the market tools hub.'},
   {'/fm analytics','View your market analytics.'},
   {'/fm farm','Find items to farm from AH prices or track your routes.'},
@@ -268,6 +274,11 @@ SlashCmdList.FOREVERMARKET=function(msg)
     for _,entry in ipairs(commandHelp) do
       print('|cffffd100'..entry[1]..'|r - '..entry[2])
     end
+  elseif msg=='sell' then
+    if AuctionHouseFrame and AuctionHouseFrame:IsShown() and ForeverMarketPages and ForeverMarketPages.ForeverMarketSell then ForeverMarketPages.ForeverMarketSell() else print('Visit an auctioneer to use Market Sell.') end
+  elseif msg=='shop' then ForeverMarketTools.openTools('Shopping lists')
+  elseif msg=='rules' then ForeverMarketTools.openTools('Formula editor')
+  elseif msg=='references' then ForeverMarketTools.openTools('Shared prices')
   elseif msg=='analytics' then ForeverMarketTools.openAnalytics()
   elseif msg=='preview' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview')
   elseif msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()

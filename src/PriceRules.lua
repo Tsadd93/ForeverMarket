@@ -1,9 +1,9 @@
 local M=ForeverMarketTools
 local functions={min={1,32},max={1,32},avg={1,32},first={1,32},ifgt={3,4},ifgte={3,4},iflt={3,4},iflte={3,4},ifeq={3,4}}
 local market={dbmarket=true,dbhistorical=true,dbregionmarketavg=true,dbregionhistorical=true,dbminbuyout=true}
-local tsmOnly={dbregionsaleavg=true,avgbuy=true,avgsell=true,smartavgbuy=true,vendorbuy=true,destroy=true,matprice=true,
+local tsmOnly={dbregionsalerate=true,dbregionsoldperday=true,numinventory=true,salerate=true,numexpires=true,dbregionsaleavg=true,avgbuy=true,avgsell=true,smartavgbuy=true,vendorbuy=true,destroy=true,matprice=true,
   auctioningopmin=true,auctioningopnormal=true,auctioningopmax=true,shoppingopmax=true,sniperopmax=true}
-local native={fmrealm=true,crafting=true,vendorsell=true,itemlevel=true}
+local native={fmbags=true,fmexpires=true,fmsold=true,fmmedian=true,fmfiltered=true,fmema=true,fmrealm=true,crafting=true,vendorsell=true,itemlevel=true}
 local units={g=10000,s=100,c=1}
 -- Parse a bounded expression language. Imported text is never evaluated as Lua.
 function M.compilePrice(source,aliases)
@@ -93,7 +93,17 @@ function M.evaluatePrice(tree,read)
   return v
 end
 function M.ruleSource(id,key,useLocal)
-  if key=='fmrealm' then
+  if key=='fmbags' then return M.bagCount(id)
+  elseif key=='fmsold' or key=='fmexpires' then
+    local name=C_Item.GetItemNameByID(id)
+    if name then
+      local r=M.marketOutcomes(name) or {}
+      return (key=='fmsold' and r.sales or key=='fmexpires' and r.returns) or 0
+    end
+  elseif key=='fmmedian' or key=='fmfiltered' or key=='fmema' then
+    local stats=M.priceStatistics(id,30)
+    if stats then return stats[key:sub(3)] end
+  elseif key=='fmrealm' then
     local n,why=M.policyFloor(id,true,{realmPct=100});if not why and n>0 then return n end
   elseif key=='crafting' then
     local n,why=M.policyFloor(id,true,{craftPct=100});if not why and n>0 then return n end
@@ -101,12 +111,19 @@ function M.ruleSource(id,key,useLocal)
     local _,_,_,level,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(id)
     local n=key=='vendorsell' and vendor or key=='itemlevel' and level
     if type(n)=='number' and n>0 then return n end
+  elseif key=='dbregionsalerate' or key=='dbregionsoldperday' then
+    if TSM_API and TSM_API.GetCustomPriceValue then
+      local ok,n=pcall(TSM_API.GetCustomPriceValue,key,'i:'..id)
+      if ok and type(n)=='number' and n>=0 then return n end
+    end
+    local v=M.regionReference and M.regionReference(id)
+    if v then return key=='dbregionsalerate' and v[2] or v[3] end
   elseif market[key] or tsmOnly[key] then
     if useLocal and market[key] then
       local n,why=M.policyFloor(id,true,{realmPct=100});if not why and n>0 then return n end
     elseif TSM_API and TSM_API.GetCustomPriceValue then
       local ok,n=pcall(TSM_API.GetCustomPriceValue,key,'i:'..id)
-      if ok and type(n)=='number' and n>0 then return n end
+      if ok and type(n)=='number' and (n>0 or n==0 and (key=='dbregionsalerate' or key=='dbregionsoldperday' or key=='numinventory' or key=='salerate' or key=='numexpires')) then return n end
     end
   end
   return nil,'Missing '..key

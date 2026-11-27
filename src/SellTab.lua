@@ -239,15 +239,18 @@ local function paint()
   readyRanks = {}
   for rank, s in ipairs(ready) do readyRanks[s.stackKey] = rank end
   local ordered = ready
+  if not ForeverMarketDB.readyOnly then
   for _, s in ipairs(waiting) do ordered[#ordered + 1] = s end
   for _, s in ipairs(held) do ordered[#ordered + 1] = s end
+  end
   for _,row in ipairs(rows) do
     if row.qty.HasFocus and row.qty:HasFocus() then
       table.sort(ordered,function(a,b) return (editingOrder[a.stackKey] or 100000)<(editingOrder[b.stackKey] or 100000) end)
       break
     end
   end
-  for _,s in ipairs(kept) do ordered[#ordered+1]=s end
+  if not ForeverMarketDB.readyOnly then for _,s in ipairs(kept) do ordered[#ordered+1]=s end end
+  content:SetHeight(math.max(1,#ordered*rowHeight))
   for i,row in ipairs(rows) do
     local s=ordered[i];row.slot=s
     row.itemRef=s and s.link;row.hover:SetShown(s~=nil)
@@ -572,6 +575,11 @@ local function create()
   end)
   button(panel,'Preview',440,-6,65,function()if ForeverMarketTools and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview') end end)
   button(panel,'Refresh',510,-6,66,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
+  button(panel,ForeverMarketDB.readyOnly and 'Ready only' or 'All items',581,-6,85,function(self)
+    ForeverMarketDB.readyOnly=not ForeverMarketDB.readyOnly
+    self:SetText(ForeverMarketDB.readyOnly and 'Ready only' or 'All items')
+    scroll:SetVerticalScroll(0);paint()
+  end)
   ForeverMarketResults(panel,56,{{'Name',0},{'Qty',237},{'Bulk ask × supply',292},{'Stack total',467},{'Action',592}})
   scroll=CreateFrame('ScrollFrame','ForeverMarketSellScroll',panel,'UIPanelScrollFrameTemplate')
   scroll:SetPoint('TOPLEFT',0,-82)

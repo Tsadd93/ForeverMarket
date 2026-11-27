@@ -197,11 +197,11 @@ M.recordGearBook(k,#rows)
 local g=M.gearEvidence(k,'item:77');assert(g.exact==120 and g.other==60 and g.last.rows==3 and g.days==1)
 now=now+86400;rows={{140,9},{80,3}};M.recordGearBook(k,#rows);g=M.gearEvidence(k,'item:77')
 assert(g.exact==130 and g.days==2 and g.low==60 and g.high==80 and g.otherDays==2)
-dofile('src/Session.lua');dofile('src/PriceRules.lua');dofile('src/Migration.lua');dofile('src/SessionViews.lua')
+dofile('src/Session.lua');dofile('src/PriceRules.lua');dofile('src/Migration.lua');dofile('src/MarketAnalysis.lua');dofile('src/SessionViews.lua')
 ForeverMarketPostingPreview=function()return {ready=0,hold=0,checking=0,gross=0,rows={}} end
 for _,resolution in ipairs({{1920,1080},{3840,2160}}) do
  UIParent={GetWidth=function()return resolution[1]/2.5 end,GetHeight=function()return resolution[2]/2.5 end}
- for _,tab in ipairs({'Home','Results','Preview','Basket','History','Import','Supply plan','Mail & bank','Farming','Watches','Realm coverage','Conversions','Conversion detail','Run detail','Comparison','Rule presets','Scan results','Sell session'}) do
+ for _,tab in ipairs({'Home','Results','Preview','Basket','History','Import','Supply plan','Mail & bank','Farming','Watches','Realm coverage','Conversions','Conversion detail','Run detail','Comparison','Rule presets','Scan results','Sell session','Shopping lists','Shared prices','Formula editor'}) do
   M.openTools(tab,10)
   local panel;for _,w in ipairs(surfaces) do if rawget(w,'width')==695 then panel=w;break end end
   assert(panel and panel.width*panel.scale<=UIParent:GetWidth() and panel.height*panel.scale<=UIParent:GetHeight())
