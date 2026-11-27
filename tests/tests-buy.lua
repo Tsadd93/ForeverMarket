@@ -511,6 +511,19 @@ do
   end
   local render=up(panel.OnShow,'render')
   local plan=up(render,'plan')
+  local allocate=up(plan,'allocation')
+  local v={id=777001,stack=20,qty=20,low=10,exit=50}
+  local prior=ForeverMarketTools
+  local tools={saleCount=function()return 12 end,marketOutcomes=function()return {paidWeek=12,returns=0,linked=0} end,
+    stockPostRestriction=function(_,n)if n>8 then return 'listed cap' end end,rule=function()return 'Quick' end}
+  ForeverMarketTools=tools
+  assert(allocate(v,50000)==8)
+  v.clearTier=true;assert(allocate(v,50000)==0)
+  v.clearTier=false;tools.stockPostRestriction=function()return 'Reserved' end
+  assert(allocate(v,50000)==0)
+  tools.stockPostRestriction=function()end;tools.marketOutcomes=function()return nil end
+  assert(allocate(v,50000)==5)
+  ForeverMarketTools=prior
   local _,idx=up(plan,'verified')
   local _,modeIdx=up(plan,'investScan');debug.setupvalue(plan,modeIdx,false)
   GetMoney=function()return 10000000 end

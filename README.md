@@ -67,6 +67,14 @@ The starter reference covers 100 commodities on the sampled US Horde Forever mar
 
 **Live comparison.** Open Market Buy, set the fund and target, and type `/fm benchmark` to check up to 50 eligible items once. Once a full sample is available, subsequent runs use the same IDs for the venue. `/fm benchlist` displays the names for copying into another shopping addon. `/fm watchreport` reports time to first deal, elapsed time, checked items and unanswered lookups for recent completed passes. Comparisons should use the same cash, price criteria and venue. Listings can change between runs.
 
+## From purchase to payout
+
+Market Buy checks ordinary flips against protected items, crafting and bag reserves, group posting caps and floors, existing fund costs, vendor value and pinned Sell quotes. The quantity uses recent paid units on your market, your existing stock and outstanding orders. Sparse history starts with a small trial of up to five units, or one after an expiration without a recent paid sale. If the flip needs the whole cheap tier to clear and you can only sell part of it, Buy skips it. Invest retains its separate recovery and capital rules. Hover over a Buy row for its demand figures, or use `/fm scanstatus` for an example of a rejected resale.
+
+Basket totals add the quantities available within your targets, caps, observed supply and spendable cash, in the displayed item order. An accepted live quote updates the total. Remaining units are displayed separately.
+
+Click the four balances on Market Buy for **Spendable**, **Stock cost**, **Due est.** and **Realized**. Spendable explains the cash balance, reservations, outstanding deposits and any reconciliation difference. Its journal keeps the latest 500 cash movements and carries earlier movements into an opening balance. Existing funds start the journal at their current cash. Sold stock stays at cost for reconciliation until collection. Pending proceeds are estimates. The realized ledger includes matched payouts and confirmed losses, and lists receipts outside matched fund sales separately.
+
 ## Optional Windows dashboard
 
 [Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.

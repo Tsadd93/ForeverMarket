@@ -36,7 +36,15 @@ dofile('src/Operations.lua')
 source[10]={{own=true,place='mail',n=3,at=now},{own=true,place='bank',n=2,at=now}}
 a.transit[10]=3
 local rows,total,unknown=M.shoppingTrip()
-assert(rows[1].missing==11 and rows[1].n==5 and rows[1].subtotal==65 and unknown==1)
+assert(rows[1].missing==11 and rows[1].n==5 and rows[1].subtotal==65 and total==65 and unknown==1)
+ForeverMarketSpendable=function()return 30 end
+local budgetRows,budgetTotal,_,budgetLeft=M.shoppingTrip()
+assert(budgetRows[1].n==2 and budgetTotal==20 and budgetLeft==9)
+ForeverMarketSpendable=nil
+a.manager.lists.Raid[10].cap=11
+local capRows,capTotal,_,capLeft=M.shoppingTrip()
+assert(capRows[1].n==2 and capTotal==20 and capLeft==9)
+a.manager.lists.Raid[10].cap=20
 a.manager.lists.Raid[10].keep=13
 rows,total,unknown=M.shoppingTrip();assert(total==50 and unknown==0)
 print('PASS: partial tier supply, full basket total, bank/mail coverage without double-counting transit')

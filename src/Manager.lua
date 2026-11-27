@@ -61,11 +61,11 @@ end
 function M.trackAcquisition(name,n)
   if name then local r=ledger(name);r.tracked=(r.tracked or 0)+n end
 end
-function M.settleLot(lot,e,n,basis)
+function M.settleLot(lot,e,n,basis,credit,deposit)
   local r=ledger(e.name)
   r.matched=r.matched+n
-  r.matchedCash=(r.matchedCash or 0)+math.floor(e.amount*n/e.quantity)
-  r.earned=r.earned+math.floor((e.amount-e.deposit)*n/e.quantity)-basis
+  r.matchedCash=(r.matchedCash or 0)+(credit or math.floor(e.amount*n/e.quantity))
+  r.earned=r.earned+(credit and credit-deposit or math.floor((e.amount-e.deposit)*n/e.quantity))-basis
 end
 function M.saleCount(name)
   local days=prefs().days[name]
@@ -98,6 +98,7 @@ function M.marketOutcomes(name)
         local r=turnover.byName[key] or {sales=0,returns=0,mature=0,linked=0,hours=0}
         turnover.byName[key]=r
         if e.kind=='proceeds_collected' and e.amount and e.deposit and e.fee and (e.quantity or 0)>0 and e.character==UnitName('player') then
+          if e.at>=now-7*86400 then r.paidWeek=(r.paidWeek or 0)+e.quantity end
           r.paidUnits=(r.paidUnits or 0)+e.quantity;r.receipts=(r.receipts or 0)+1
           local gross=e.amount+e.fee-e.deposit
           r.gross=(r.gross or 0)+gross
@@ -195,7 +196,7 @@ function M.recordMarket(kind,e)
       for _,lot in ipairs(ForeverMarketTradingFund().lots) do
         if lot.auctionId==c.id and lot.n>0 and lot.basis then
           local fee=math.ceil(c.fee*lot.n/(lot.posted or lot.n))
-          local f=ForeverMarketTradingFund();f.cash=f.cash-fee
+          local f=ForeverMarketTradingFund();ForeverMarketChangeCash(f,-fee,'Cancellation fee',lot.name)
           restoreLot(lot,ledger(lot.name),fee);break
         end
       end
@@ -392,12 +393,66 @@ local function cancel(r)
 end
 local undercutsOnly=false
 local ledgerItem,ledgerEvents,ledgerLength,flipIndex
+local fundSection='cash'
+function M.fundSummary(detail)
+  local f=ForeverMarketTradingFund()
+  local s={cash=ForeverMarketSpendable(),inventory=0,pending=0,profit=0,deposit=0,soldBasis=0,other=0,rows={}}
+  local function row(section,title,amount,description)
+    if detail==section then
+      local r={name=title,detail=money(amount)..(description and (' / '..description) or '')}
+      if section=='inventory' or section=='pending' then
+        r.action='History';r.click=function()mode='Ledger';ledgerItem=title;ledgerEvents=nil;page=1 end
+      end
+      s.rows[#s.rows+1]=r
+    end
+  end
+  row('cash','Allocated capital',f.seed)
+  row('cash','Cash balance',f.cash)
+  row('cash','Unavailable for buying',f.cash-s.cash,'reservations or wallet limit')
+  row('cash','Opening journal balance',f.cashOpening or f.cash)
+  if detail=='cash' then for i=#(f.cashLog or {}),1,-1 do
+    local e=f.cashLog[i];row('cash',e.kind,e.delta,(e.name or '')..' '..date('%b %d %H:%M',e.at))
+  end end
+  for id,h in pairs(f.held or {}) do if h.n>0 then
+    s.inventory=s.inventory+(h.cost or 0)
+    if detail=='inventory' then row(detail,nameOf(h.itemID or tonumber(id) or 0),h.cost or 0,h.n..' held, including mail') end
+  end end
+  for _,lot in ipairs(f.lots or {}) do if lot.n>0 then
+    local cost=lot.basis or 0;s.deposit=s.deposit+(lot.deposit or 0)
+    if lot.sold then
+      local due=ForeverMarketSaleNet(lot.price*lot.n)+(lot.deposit or 0)
+      s.pending=s.pending+due;s.soldBasis=s.soldBasis+cost
+      row('pending',lot.name or 'Sold item',due,lot.n..' units / awaiting collection')
+    else s.inventory=s.inventory+cost;row('inventory',lot.name or 'Listed item',cost,lot.n..' listed') end
+  end end
+  for id,mat in pairs(M.account().materialCosts or {}) do if mat.n>0 then
+    s.inventory=s.inventory+(mat.cost or 0)
+    if detail=='inventory' then row(detail,nameOf(id),mat.cost or 0,'craft materials') end
+  end end
+  for name,r in pairs(prefs().ledger) do
+    local value=(r.earned or 0)-(r.loss or 0);s.profit=s.profit+value
+    local outside=math.max(0,(r.proceeds or 0)-(r.matchedCash or 0));s.other=s.other+outside
+    if detail=='profit' and (value~=0 or outside>0) then
+      s.rows[#s.rows+1]={name=name,detail='Realized '..money(value)..' / unassigned receipts '..money(outside),action='History',
+        click=function()mode='Ledger';ledgerItem=name;ledgerEvents=nil;page=1 end}
+    end
+  end
+  s.difference=f.cash+s.inventory+s.soldBasis+s.deposit-f.seed-s.profit
+  row('cash','Deposits outstanding',s.deposit)
+  row('cash','Sold stock at cost',s.soldBasis,'until proceeds are collected')
+  row('cash','Reconciliation difference',s.difference,'cash + open costs + deposits less capital and realized profit')
+  row('profit','Receipts outside matched fund sales',s.other)
+  if detail=='pending' and #s.rows==0 then s.rows[1]={name='No pending fund sales',detail='Confirmed fund sales appear here until collection.'} end
+  if detail=='inventory' and #s.rows==0 then s.rows[1]={name='No fund stock',detail='Confirmed purchases and open listings appear here.'} end
+  return s
+end
 local function entries()
   local items={}
   local function add(name,detail,action,click,key)
     items[#items+1]={name=name,detail=detail,action=action,click=click,key=key or name}
   end
-  if mode=='Auctions' then
+  if mode=='Fund' then return M.fundSummary(fundSection).rows
+  elseif mode=='Auctions' then
     for i=1,api.GetNumOwnedAuctions() do
       local r=api.GetOwnedAuctionInfo(i)
       if r and r.itemKey and (not undercutsOnly or ownedDetail(r):match("^Review for relist")) then
@@ -476,7 +531,7 @@ local function render()
   if not panel or not panel:IsVisible() then return end
   local list=entries()
   local pages=math.max(1,math.ceil(#list/#rows));page=math.min(page,pages);pageLabel:SetText(page..' / '..pages)
-  title:SetText(mode=='Dip tests' and 'Forward tests / did a later bulk quote reach the original exit?' or mode=='Flips' and (flipIndex and 'Purchase details / click Fund flips to return' or 'Confirmed Market Buy purchases since 0.12.0') or mode=='Shopping' and ('Active shopping list: '..prefs().active) or mode=='Rules' and 'Item rules override category rules.' or mode=='Ledger' and ledgerItem and (ledgerItem..' / click Ledger to return') or mode=='Ledger' and 'Realized profit uses fund purchases matched to collected sales.' or ('My auctions / '..ForeverMarketVenueRealm()))
+  title:SetText(mode=='Fund' and ('Trading fund / '..fundSection) or mode=='Dip tests' and 'Forward tests / did a later bulk quote reach the original exit?' or mode=='Flips' and (flipIndex and 'Purchase details / click Fund flips to return' or 'Confirmed Market Buy purchases since 0.12.0') or mode=='Shopping' and ('Active shopping list: '..prefs().active) or mode=='Rules' and 'Item rules override category rules.' or mode=='Ledger' and ledgerItem and (ledgerItem..' / click Ledger to return') or mode=='Ledger' and 'Realized profit uses fund purchases matched to collected sales.' or ('My auctions / '..ForeverMarketVenueRealm()))
   for i,row in ipairs(rows) do
     local r=list[(page-1)*#rows+i];row.data=r
     row.name:SetText(r and r.name or '');row.detail:SetText(r and r.detail or '')
@@ -575,6 +630,9 @@ local function create()
   panel:SetScript('OnUpdate',function(_,dt)elapsed=elapsed+dt;if elapsed>.5 then elapsed=0;panel.inputs();render() end end)
   panel:SetScript('OnHide',function()confirm=nil end)
   hooksecurefunc(AuctionHouseFrame,'SetDisplayMode',function()panel:Hide()end)
+end
+function M.openFundSection(section)
+  fundSection=section;mode='Fund';page=1;M.openManager()
 end
 function M.openManager()
   create();panel:Show();panel.inputs();refresh()

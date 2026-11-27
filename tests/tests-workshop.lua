@@ -378,6 +378,8 @@ print('PASS: remaining listing quantities, bid settlement and idempotent wallet-
 do
   local id=98765
   local f=ForeverMarketTradingFund()
+  f.seed=50000;f.cash=50000;f.cashOpening=nil;f.cashLog=nil
+  local before=M.fundSummary()
   f.pending={id=id,n=4,total=101,forecast=47,dep=4,at=time()}
   ForeverMarketFundActivity('purchase',{itemId=id,name='Test Ore',quantity=4,total=101,at=time()})
   local flip=f.flips[#f.flips]
@@ -386,16 +388,21 @@ do
     ForeverMarketFundPost(id,n,price,deposit,id)
     ForeverMarketFundActivity('posted',{itemId=id,name=flip.name,quantity=n,total=price*n,auctionId=auction})
   end
+  assert(f.cash==49899 and M.fundSummary().inventory==before.inventory+101)
   post(2,40,4,801);assert(flip.listed==2)
   M.recordMarket('auction_expired',{itemId=id,name=flip.name,quantity=2})
   assert(flip.lost==4 and flip.listed==0 and f.held[id].n==4)
   post(5,40,10,802);assert(flip.listed==4)
   ForeverMarketFundActivity('sale_notice',{auctionId=802})
+  assert(M.fundSummary().pending>before.pending and M.fundSummary().profit==before.profit-4)
   local function collect(n)
     ForeverMarketFundActivity('proceeds_collected',{name=flip.name,invoiceType='seller',quantity=n,amount=40*n,fee=2*n,deposit=2*n,at=time()})
   end
   collect(2);assert(flip.sold==2 and flip.net==76 and flip.listed==2)
   collect(3);assert(flip.sold==4 and flip.net==152 and flip.listed==0 and flip.net-flip.cost-flip.lost==47)
+  local endpass=M.fundSummary()
+  assert(f.cash==50047 and endpass.profit==before.profit+47 and endpass.inventory==before.inventory and endpass.pending==before.pending and endpass.difference==before.difference)
+  local movement=f.cashOpening;for _,e in ipairs(f.cashLog) do movement=movement+e.delta end;assert(movement==50047)
   local cash=f.cash;collect(1);assert(f.cash==cash)
   M.account().sales[803]={name=flip.name,qty=1,amount=40}
   ForeverMarketFundActivity('sale_notice',{auctionId=803});collect(1);assert(f.cash==cash)

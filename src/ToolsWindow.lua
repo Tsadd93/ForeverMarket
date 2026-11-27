@@ -66,18 +66,18 @@ local function basket()
   end)
   action(3,'Run shopping list',function() if M.runBasket then return M.runBasket() end end)
   action(4,'Vendor deals',function() if AuctionHouseFrame and AuctionHouseFrame:IsShown() then f:Hide();M.openVendorDeals() else return 'Open the auction house.' end end)
-  local trip,total,unknown=M.shoppingTrip()
-  summary:SetText(m.active..' / '..coins(total)..(unknown>0 and (' priced subtotal / '..unknown..' incomplete') or ' total for missing quantities'))
+  local trip,total,unknown,remaining=M.shoppingTrip()
+  summary:SetText(m.active..' / Buyable now '..coins(total)..' / '..remaining..' units still needed after this pass')
   for i,rule in ipairs(M.basketFilters and M.basketFilters() or {}) do
     add('Search: '..(rule.term~='' and rule.term or rule.category or 'All items'),'Target '..rule.units..' each / max '..(rule.max>0 and coins(rule.max) or 'any price'),'Remove',function()return M.removeBasketFilter(i)end)
   end
   for _,r in ipairs(trip) do
     local q=M.quote;local active=q and q.trip and q.id==r.id
-    local displayed=active and q.total
-    local detail=r.missing==0 and 'Covered' or ('Need '..r.missing..' / buy '..r.n..' / '..coins(displayed or r.subtotal))
-    add(r.name,detail,r.n>0 and (displayed and 'Confirm' or active and 'Quoting' or 'Quote'),function()
+    local displayed=active and q.n==r.n and q.total and q.total<=r.subtotal and q.total
+    local detail=active and q.total and not displayed and 'Quote changed / request again' or r.missing==0 and 'Covered' or ('Need '..r.missing..' / buy '..r.n..' / '..coins(displayed or r.subtotal))
+    add(r.name,detail,r.n>0 and (displayed and 'Confirm' or active and not q.total and 'Quoting' or 'Quote'),function()
       if displayed and (M.quote~=q or q.total~=displayed) then return 'Quote changed. Review it again.' end
-      if not displayed and active then return 'Waiting for live quote.' end
+      if not displayed and active then if q.total then M.cancelMaterial() else return 'Waiting for live quote.' end end
       return M.buyTrip(r.id)
     end)
   end

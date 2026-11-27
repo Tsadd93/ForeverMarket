@@ -7,9 +7,15 @@ local function recipient(a)
 end
 local function activeAH() return AuctionHouseFrame and AuctionHouseFrame:IsShown() end
 function M.shoppingTrip()
-  local rows,total,unknown={},0,0
+  local rows,total,unknown,remaining={},0,0,0
   local a=M.account()
-  for id,r in pairs(M.tripTargets and M.tripTargets() or M.restockList()) do
+  local targets=M.tripTargets and M.tripTargets() or M.restockList()
+  local ids,labels={},{}
+  for id in pairs(targets) do ids[#ids+1]=id;labels[id]=name(id) end
+  table.sort(ids,function(x,y)if labels[x]==labels[y] then return x<y end return labels[x]<labels[y] end)
+  local cash=ForeverMarketSpendable and ForeverMarketSpendable(true) or math.huge
+  for _,id in ipairs(ids) do
+    local r=targets[id]
     local bank,mail=0,0
     for _,s in ipairs(M.sources(id)) do
       if s.own and time()-s.at<7*86400 then
@@ -21,21 +27,24 @@ function M.shoppingTrip()
     local missing=math.max(0,r.keep-M.bagCount(id)-bank-math.max(mail,a.transit[id] or 0)-ordered)
     local cost=M.cost(id,missing)
     local n=missing
-    if missing>0 and (not cost or r.cap>0 and cost>r.cap*missing) then
+    if missing>0 and (not cost or cost>cash or r.cap>0 and cost>r.cap*missing) then
       local lo,hi=0,missing
       while lo<hi do
         local mid=math.ceil((lo+hi)/2);local price=M.cost(id,mid)
-        if price and (r.cap==0 or price<=r.cap*mid) then lo=mid else hi=mid-1 end
+        if price and price<=cash and (r.cap==0 or price<=r.cap*mid) then lo=mid else hi=mid-1 end
       end
       n=lo
     end
     local info=C_AuctionHouse.GetItemKeyInfo(C_AuctionHouse.MakeItemKey(id))
     if info and not info.isCommodity then n=math.min(n,1) end
-    if cost then total=total+cost else unknown=unknown+1 end
-    rows[#rows+1]={id=id,name=name(id),missing=missing,n=n,cost=cost,subtotal=M.cost(id,n),bank=bank,mail=mail}
+    local subtotal=M.cost(id,n) or 0
+    local q=M.quote
+    local display=q and q.trip and q.id==id and q.n==n and q.total and q.total<=subtotal and q.total or subtotal
+    cash=cash-display;total=total+display;remaining=remaining+missing-n
+    if n<missing then unknown=unknown+1 end
+    rows[#rows+1]={id=id,name=labels[id],missing=missing,n=n,cost=cost,subtotal=subtotal,bank=bank,mail=mail}
   end
-  table.sort(rows,function(a,b)return a.name<b.name end)
-  return rows,total,unknown
+  return rows,total,unknown,remaining
 end
 function M.buyTrip(id)
   if not activeAH() then return 'Open the auction house.' end

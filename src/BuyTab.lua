@@ -2,6 +2,7 @@ local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName 
 local api=C_AuctionHouse
 if not api then return end
 local panel,status,balance,content,scroll
+local fundButtons={}
 local rows,leads,verified={},{},{}
 local cursor,search,lastSearch=1,nil,-100
 local checked,unanswered,totalLeads,missingScan=0,0,0,false
@@ -21,6 +22,14 @@ local function fund()
   return funds[key]
 end
 ForeverMarketTradingFund=fund
+function ForeverMarketChangeCash(f,delta,kind,name)
+  if delta==0 then return end
+  f.cashLog=f.cashLog or {}
+  f.cashOpening=f.cashOpening or f.cash
+  f.cash=f.cash+delta
+  table.insert(f.cashLog,{at=time(),delta=delta,kind=kind,name=name})
+  if #f.cashLog>500 then local e=table.remove(f.cashLog,1);f.cashOpening=f.cashOpening+e.delta end
+end
 local function available(forCraft)
   local f=fund();local reserve=0
   for _,h in pairs(f.held) do reserve=reserve+(h.reserve or 0) end
@@ -521,29 +530,69 @@ local function candidates(keepVerified,snapshot)
 end
 local function resaleDeposit(v,n)
   if v.auctionID then return v.dep end
-  local full=math.floor(n/v.stack)
-  local rest=n%v.stack
+  local options=ForeverMarketTools and ForeverMarketTools.postOptions and ForeverMarketTools.postOptions(v.id) or {}
+  local stack=math.min(v.stack,options.size or v.stack)
+  local duration=options.duration or 1
+  local full=math.floor(n/stack)
+  local rest=n%stack
   local standard=0
-  if full>0 then standard=api.CalculateCommodityDeposit(v.id,1,v.stack) end
+  if full>0 then standard=api.CalculateCommodityDeposit(v.id,duration,stack) end
   local remainder=0
   if full>0 and not standard then return end
-  if rest>0 then remainder=api.CalculateCommodityDeposit(v.id,1,rest) end
+  if rest>0 then remainder=api.CalculateCommodityDeposit(v.id,duration,rest) end
   if remainder then return full*standard+remainder end
 end
 local function netResale(v,n)
-  local full=math.floor(n/v.stack)
-  local remainder=n%v.stack
-  return full*ForeverMarketSaleNet(v.exit*v.stack)+ForeverMarketSaleNet(v.exit*remainder)
+  local options=ForeverMarketTools and ForeverMarketTools.postOptions and ForeverMarketTools.postOptions(v.itemID or v.id) or {}
+  local stack=math.min(v.stack,options.size or v.stack)
+  local full=math.floor(n/stack)
+  local remainder=n%stack
+  return full*ForeverMarketSaleNet(v.exit*stack)+ForeverMarketSaleNet(v.exit*remainder)
+end
+local function demand(v)
+  local m=ForeverMarketTools
+  if v.model or not m or not m.saleCount or not m.marketOutcomes then return math.huge end
+  local name=C_Item.GetItemNameByID(v.itemID or v.id)
+  local observed=name and m.marketOutcomes(name)
+  local sold=observed and observed.paidWeek or 0
+  local held=onHand()[v.id] or 0
+  local probe=math.min(v.stack,5)
+  local limit=sold>0 and sold or probe
+  if observed and observed.returns>0 and sold==0 then limit=1 end
+  if observed and observed.linked>0 and observed.hours/observed.linked>72 then limit=math.max(1,math.ceil(limit/2)) end
+  return math.max(0,limit-held),sold..' paid units in 7 days / '..held..' already owned or ordered'
+end
+local function repostOK(v,n,dep,force)
+  local m=ForeverMarketTools
+  if v.model or not m or not m.stockPostRestriction then return true end
+  local id=v.itemID or v.id
+  local pin=ForeverMarketPinnedExit and ForeverMarketPinnedExit(id,v.variant)
+  if pin and pin<v.exit then return false,'Saved Sell quote below expected exit' end
+  local restriction=m.stockPostRestriction(id,n,v.exit,force,n)
+  if restriction then return false,restriction end
+  local h=fund().held[v.variant or id] or fund().held[id] or {}
+  local floor=ForeverMarketFundMinimum((h.cost or 0)+n*v.low,(h.n or 0)+n,dep,n)
+  if m.rule(id)=='Margin' then floor=math.ceil(floor*(10000+ForeverMarketMarginBP())/10000) end
+  if v.exit<math.max(floor,ForeverMarketInvestmentTarget(id) or 0) then return false,'Below fund resale minimum' end
+  return true
 end
 local function allocation(v,cash)
-  local n=math.min(v.qty,room(v.id,v.stack),math.floor(cash/v.low))
+  local cap,reason=demand(v);v.demandReason=reason
+  local n=math.min(v.qty,room(v.id,v.stack),math.floor(cash/v.low),cap)
   local lo,hi=0,n
+  local blocked
   while lo<hi do
     local mid=math.ceil((lo+hi)/2)
     local dep=resaleDeposit(v,mid)
-    if dep and mid*v.low+dep<=cash then lo=mid else hi=mid-1 end
+    local ok,why=repostOK(v,mid,dep,false)
+    if dep and mid*v.low+dep<=cash and ok then lo=mid else hi=mid-1;blocked=why or blocked end
   end
-  if lo==0 or v.clearTier and lo<v.qty then return 0,0 end
+  if lo==0 or v.clearTier and lo<v.qty then
+    if report and (blocked or cap<v.qty) then
+      report.repostExample={id=v.itemID or v.id,reason=blocked or ('Demand allows '..cap..' / cheap tier '..v.qty)}
+    end
+    return 0,0
+  end
   return lo,resaleDeposit(v,lo)
 end
 local function investmentBudget(cash)
@@ -622,6 +671,14 @@ local function buy(row)
   local p=row.pick
   stock=nil
   if p.n>room(p.v.id,p.v.stack) then clearQuote();note('Stock limit reached.');return end
+  if p.n>demand(p.v) or not repostOK(p.v,p.n,p.dep,true) then clearQuote();note('Demand or posting rules changed. Review the shopping list.');return end
+  local m=ForeverMarketTools
+  local group=m and m.group and m.group(p.v.itemID or p.v.id)
+  local cost=p.n*p.v.low
+  local after=netResale(p.v,p.n)-ForeverMarketDepositLoss(p.n)
+  if group and (group.cap or 0)>0 and p.v.low>group.cap or after<=p.n*p.v.vendor or (after-cost)*10000<cost*math.max(ForeverMarketMarginBP(),group and group.margin*100 or 0) then
+    clearQuote();note('Resale margin changed. Review the shopping list.');return
+  end
   local pressed=row.pressed
   row.pressed=nil
   if pressed and (pressed.id~=p.v.id or pressed.n~=p.n or pressed.total~=row.buyTotal or pressed.auctionID~=p.v.auctionID) then
@@ -706,7 +763,12 @@ local function render()
       list[#list+1]={v=saved.pick.v,n=saved.pick.n,inactive=reason}
     end
   end
-  balance:SetText('Trading cash  '..ForeverMarketCoins(fund().cash))
+  balance:SetText('Fund cash  '..ForeverMarketCoins(fund().cash))
+  if #fundButtons>0 and (not fundButtons.updated or GetTime()-fundButtons.updated>=.5) then
+    fundButtons.updated=GetTime()
+    local sums=ForeverMarketTools.fundSummary()
+    for _,b in ipairs(fundButtons) do b:SetText(b.caption..' '..ForeverMarketCoins(sums[b.section])) end
+  end
   content:SetHeight(math.max(1,#list*26))
   for i=1,math.max(#rows,#list) do
     local row=rows[i]
@@ -729,6 +791,7 @@ local function render()
     local itemName=p and C_Item.GetItemNameByID(p.v.itemID or p.v.id)
     row.marketId=p and (p.v.itemID or p.v.id)
     row.priceReason=p and not p.inactive and ("Buy "..p.n.." x "..ForeverMarketCoins(p.v.low).." / exit per item "..ForeverMarketCoins(p.v.exit).." / deposit reserved "..ForeverMarketCoins(p.dep or 0)) or nil
+    if row.priceReason and p.v.demandReason then row.priceReason=row.priceReason..' / '..p.v.demandReason end
     if row.priceReason and p.v.starter then row.priceReason='Starter estimate '..date('%b %d',ForeverMarketStarter.at)..' / live offer checked. '..row.priceReason end
     if row.priceReason and itemName and ForeverMarketTools and ForeverMarketTools.marketOutcomes then
       local outcomes=ForeverMarketTools.marketOutcomes(itemName)
@@ -817,6 +880,7 @@ local function inspect(id)
     end
     v.stack=stack;v.vendor=vendor
     v.exit=v.model and v.model.exit or math.min(ForeverMarketPostPrice(commodityResaleAsk(d)),math.floor(v.ref*.9)-2)
+    if not v.model and ForeverMarketPinnedExit then v.exit=math.min(v.exit,ForeverMarketPinnedExit(id) or v.exit) end
     -- Fee rounding and deposit depend on stack quantity. Screen on the
     -- unrounded ceiling here; plan() checks actual stack proceeds in copper.
     v.edge=v.exit*ForeverMarketKeepBP()/10000-d.low
@@ -860,6 +924,7 @@ local function inspectItems(key)
       table.sort(g,function(a,b)return a.buyoutAmount<b.buyoutAmount end)
       local r=g[1]
       local exit=math.min(ForeverMarketPostPrice(g[2].buyoutAmount),math.floor(lead.ref*.9)-2)
+      if ForeverMarketPinnedExit then exit=math.min(exit,ForeverMarketPinnedExit(key.itemID,variant) or exit) end
       local name,_,_,_,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(r.itemLink)
       if not vendor and lead.id<0 then vendor=0 end
       if not vendor then waiting=true
@@ -982,7 +1047,15 @@ local function create()
     line:SetPoint('TOPRIGHT',panel,'TOPRIGHT',line==status and -6 or -145,line==status and -37 or -55)
     line:SetJustifyH('LEFT');line:SetWordWrap(false)
   end
-  ForeverMarketResults(panel,80,{{'Name',0},{'Qty',213},{'Buy total',261},{'Est. profit',426},{'Action',592}})
+  if ForeverMarketTools and ForeverMarketTools.fundSummary then
+    for i,s in ipairs({{'Spendable','cash'},{'Stock cost','inventory'},{'Due est.','pending'},{'Realized','profit'}}) do
+      local b=CreateFrame('Button',nil,panel,'UIPanelButtonTemplate')
+      b:SetSize(157,20);b:SetPoint('TOPLEFT',(i-1)*160,-77);b.caption=s[1];b.section=s[2]
+      b:SetScript('OnClick',function()ForeverMarketTools.openFundSection(s[2])end)
+      fundButtons[i]=b
+    end
+  end
+  ForeverMarketResults(panel,103,{{'Name',0},{'Qty',213},{'Buy total',261},{'Est. profit',426},{'Action',592}})
   local edit=CreateFrame('EditBox',nil,panel,'InputBoxTemplate');edit:SetSize(45,24);edit:SetPoint('TOPLEFT',178,0);edit:SetAutoFocus(false)
   local set=CreateFrame('Button',nil,panel,'UIPanelButtonTemplate');set:SetSize(92,24);set:SetPoint('TOPLEFT',230,0);set:SetText('Set fund (gold)')
   set:SetScript('OnClick',function()
@@ -996,7 +1069,7 @@ local function create()
     for _,h in pairs(f.held) do reserved=reserved+(h.reserve or 0) end
     if cash<reserved then note('Reserved for posting deposits: '..ForeverMarketCoins(reserved));return end
     f.seed=f.seed+(cash-f.cash)
-    f.cash=cash
+    ForeverMarketChangeCash(f,cash-f.cash,'Fund adjustment')
     edit:SetText(cash/10000);edit:ClearFocus()
     clearQuote();render();note('Fund saved.')
   end)
@@ -1062,7 +1135,7 @@ local function create()
   end)
   radar:ClearAllPoints();radar:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-55) end
   if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-215,-37) end
-  scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-108);scroll:SetPoint('BOTTOMRIGHT',-26,4)
+  scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-131);scroll:SetPoint('BOTTOMRIGHT',-26,4)
   content=CreateFrame('Frame',nil,scroll);content:SetSize(678,1);scroll:SetScrollChild(content)
   panel:SetScript('OnShow',function()
     if pausedMarket~=GetRealmName() then pausedMarket=nil;remembered,displayOrder,verified={},{},{} end
@@ -1116,7 +1189,7 @@ function ForeverMarketFundActivity(kind,e)
   local f=fund();local p=e.auctionId and f.itemOrders and f.itemOrders[e.auctionId] or f.pending
   if kind=='purchase' and p and (not p.auctionID or p.auctionID==e.auctionId) and e.itemId==p.id and e.quantity==p.n and e.total and e.total<=p.total then
     if p.auctionID then f.itemOrders[p.auctionID]=nil else f.pending=nil end
-    f.cash=f.cash-e.total
+    ForeverMarketChangeCash(f,-e.total,'Purchased',e.name)
     if p.craft and ForeverMarketTools then
       local a=ForeverMarketTools.account();a.transit[p.id]=(a.transit[p.id] or 0)+p.n
       a.materialCosts=a.materialCosts or {}
@@ -1145,7 +1218,7 @@ function ForeverMarketFundActivity(kind,e)
       local basis=math.floor((h.cost or 0)*t.tracked/h.n)
       local investmentQty=math.min(h.invested or 0,t.tracked);local investmentTarget=h.target
       h.invested=math.max(0,(h.invested or 0)-t.tracked);if h.invested==0 then h.target=nil end
-      h.cost=math.ceil((h.cost or 0)*(h.n-t.tracked)/h.n);f.cash=f.cash-math.ceil(dep*t.tracked/t.n);h.reserve=math.floor(h.reserve*(h.n-t.tracked)/h.n);h.n=h.n-t.tracked
+      h.cost=math.ceil((h.cost or 0)*(h.n-t.tracked)/h.n);ForeverMarketChangeCash(f,-math.ceil(dep*t.tracked/t.n),'Posting deposit',e.name);h.reserve=math.floor(h.reserve*(h.n-t.tracked)/h.n);h.n=h.n-t.tracked
       f.lots[#f.lots+1]={name=e.name,n=t.tracked,invested=investmentQty,target=investmentTarget,posted=t.n,unpaid=t.n,basis=basis,holding=t.id,itemID=t.itemID,deposit=math.ceil(dep*t.tracked/t.n),price=t.price,auctionId=e.auctionId}
       if ForeverMarketTools and ForeverMarketTools.listFlip then ForeverMarketTools.listFlip(h,f.lots[#f.lots],h.n+t.tracked) end
     end
@@ -1162,7 +1235,7 @@ function ForeverMarketFundActivity(kind,e)
         if n>0 and lot.basis and ForeverMarketTools and ForeverMarketTools.settleLot then
           local basis=math.floor(lot.basis*n/lot.n)
           if ForeverMarketTools.payFlip then ForeverMarketTools.payFlip(lot,e,n,offset) end
-          ForeverMarketTools.settleLot(lot,e,n,basis)
+          ForeverMarketTools.settleLot(lot,e,n,basis,math.floor(e.amount*(offset+n)/e.quantity)-math.floor(e.amount*offset/e.quantity),math.floor(lot.deposit*n/lot.n))
           lot.basis=lot.basis-basis
           lot.deposit=lot.deposit-math.floor(lot.deposit*n/lot.n)
         end
@@ -1170,7 +1243,7 @@ function ForeverMarketFundActivity(kind,e)
         lot.n=lot.n-n;remain=remain-units
       end
     end
-    f.cash=f.cash+credit
+    ForeverMarketChangeCash(f,credit,'Collected sale',e.name)
   elseif kind=='sale_notice' and e.auctionId then
     for _,lot in ipairs(f.lots) do
       if lot.auctionId==e.auctionId then lot.sold=true;return end

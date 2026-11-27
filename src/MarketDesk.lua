@@ -208,13 +208,22 @@ function M.policyFloor(id,force)
   floors[id]={group=group,at=GetTime(),floor=floor,why=why}
   return floor,why
 end
-function M.checkPostPolicy(id,qty,unit,force)
+function M.stockPostRestriction(id,qty,unit,force,incoming)
+  local blocked=ForeverMarketDB.__sellBlacklist
+  local personal=blocked and blocked[UnitGUID('player')]
+  if personal and personal[id] or not personal and (id==2901 or id==5956) then return 'Protected item' end
+  if M.rule(id)=='Keep' then return 'Keep for profession' end
+  local required=M.materials()[id] or 0
+  if required>0 and M.bagCount(id)+(incoming or 0)-qty<required then return 'Reserved for crafting or restocking' end
+  return M.checkPostPolicy(id,qty,unit,force,incoming)
+end
+function M.checkPostPolicy(id,qty,unit,force,incoming)
   local g=M.group(id)
   if not g then return end
   local floor,why=M.policyFloor(id,force)
   if why then return why end
   if unit and unit<floor then return 'Posting floor changed. Review the price.' end
-  if (g.reserve or 0)>0 and M.bagCount(id)-qty<g.reserve then return 'Group bag reserve' end
+  if (g.reserve or 0)>0 and M.bagCount(id)+(incoming or 0)-qty<g.reserve then return 'Group bag reserve' end
   if (g.postCap or 0)>0 then
     local api=C_AuctionHouse
     if not api.GetNumOwnedAuctions or not api.GetOwnedAuctionInfo or api.HasFullOwnedAuctionResults and not api.HasFullOwnedAuctionResults() then return 'Waiting for owned listings' end

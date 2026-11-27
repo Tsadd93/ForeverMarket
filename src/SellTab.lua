@@ -141,6 +141,14 @@ local function price(q,s)
   end
   return p
 end
+function ForeverMarketPinnedExit(id,variant)
+  local scope=table.concat({GetCurrentRegion(),GetRealmID and GetRealmID() or 0,GetRealmName(),UnitFactionGroup('player')},'|')
+  local pins=ForeverMarketDB.sellPins and ForeverMarketDB.sellPins[scope]
+  if not pins then return end
+  local key=api.MakeItemKey(id)
+  local q=pins[variant or keyOf(key)]
+  if q then return price(q,{k=key}) or 0 end
+end
 local function quoteDetail(q)
   if q.floorPrice then return ForeverMarketCoins(q.floorPrice)..' x '..q.floorQty end
   if q.timedOut then return q.average and 'Timeout / history avg' or 'No live response' end
@@ -152,8 +160,8 @@ local function postingLimit(s,unitPrice,recheck)
   local qty=quantity(s)
   if not qty then return 'Enter 1 to '..s.count end
   if ForeverMarketTools then
-    if ForeverMarketTools.checkPostPolicy then
-      local reason=ForeverMarketTools.checkPostPolicy(s.k.itemID,qty,unitPrice,recheck)
+    if ForeverMarketTools.stockPostRestriction then
+      local reason=ForeverMarketTools.stockPostRestriction(s.k.itemID,qty,unitPrice,recheck)
       if reason then return reason end
     end
     if ForeverMarketTools.rule and ForeverMarketTools.rule(s.k.itemID)=='Keep' then return 'Keep for profession' end
