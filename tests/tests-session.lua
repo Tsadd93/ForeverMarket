@@ -27,6 +27,15 @@ local function sample(price)
 end
 sample(41);sample(40);sample(40);sample(39);sample(nil);sample(40)
 assert(sent==6 and observed==3)
+C_AuctionHouse.GetItemKeyInfo=function()return {isCommodity=false} end
+M.session().snipe=true
+local starts=0
+M.startMaterial=function(id,order) starts=starts+1;assert(order.cap==39 and order.n==1);M.quote={};return true end
+sample(41);assert(starts==0)
+sample(39);assert(starts==1 and M.quote.watch and M.quote.snipe)
+M.watchTick();assert(starts==1);M.quote=nil
+C_AuctionHouse.GetItemKeyInfo=function()return {isCommodity=true} end
+sample(38);assert(starts==1 and M.watchPreview.price==38)
 events[#events-1](nil,'AUCTION_HOUSE_CLOSED');assert(not M.priceMonitorActive())
 local msg=M.watchRecipe({materials={[10]=1,[11]=1}});assert(msg:find('1 existing') and msg:find('1 without'))
 assert(M.disenchantValue(20)==47)

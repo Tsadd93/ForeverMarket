@@ -254,7 +254,7 @@ local _,unpaidAgain,earnedAgain=M.saleTotals();assert(unpaidAgain==unpaid and ea
 print('PASS: identical payouts with reordered wallet/mailbox events and persistence across module reload')
 
 
-loadPart('Manager')
+loadPart('Manager');loadPart('CancelQueue')
 assert(M.importList('FM1;10,7,100;100,5,200'))
 assert(M.exportList()=='FM1;10,7,100;100,5,200' or M.exportList()=='FM1;100,5,200;10,7,100')
 assert(not M.importList('FM1;10,2,3;invalid') and M.restockList()[10].keep==7)

@@ -40,23 +40,29 @@ function M.watchRecipe(recipe)
   end
   return ('%d new ceilings at scanned asks / %d existing / %d without a price.'):format(count,kept,missing)
 end
+local quoteRetry={}
+local stagingQuickQuote
 local poll,waiting,nextAt,index=false,nil,0,0
 local api=C_AuctionHouse
 function M.monitorPrices(enable)
-  poll=enable;waiting=nil;index=0;nextAt=0
+  M.watchPreview=nil;poll=enable;waiting=nil;index=0;nextAt=0
 end
 function M.priceMonitorActive()return poll end
 function M.watchTick()
   if not poll then return end
   if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then M.monitorPrices(false);return end
   if waiting and GetTime()-waiting.at>10 then waiting=nil end
-  if waiting or GetTime()<nextAt or not api.IsThrottledMessageSystemReady() then return end
+  if M.watchPreview then
+    if GetTime()-M.watchPreview.at<9 then return end
+    M.watchPreview=nil;M.watchChanged=true
+  end
+  if M.quote or waiting or GetTime()<nextAt or not api.IsThrottledMessageSystemReady() then return end
   local ids={}
   for id in pairs(settings().watches) do ids[#ids+1]=id end
   if #ids==0 then M.monitorPrices(false);return end
   table.sort(ids);index=index%#ids+1
   local id=ids[index];local name=C_Item.GetItemNameByID(id)
-  nextAt=GetTime()+math.max(2,15/#ids)
+  nextAt=GetTime()+(settings().snipe and 0.5 or math.max(2,15/#ids))
   if not name then return end
   local query={searchString=name,sorts={},filters={}}
   waiting={id=id,query=query,at=GetTime()}
@@ -79,6 +85,21 @@ listener:SetScript('OnEvent',function(_,event)
     if lowest and lowest<=rule.cap and (not rule.ask or lowest<rule.ask or rule.ask>rule.cap) then
       print('Forever Market: '..(C_Item.GetItemNameByID(id) or id)..' listed at '..ForeverMarketCoins(lowest)..' each.')
     end
+    if settings().snipe and lowest and lowest<=rule.cap and not M.quote and GetTime()>=(quoteRetry[id] or 0) then
+      local info=api.GetItemKeyInfo(bestKey)
+      quoteRetry[id]=GetTime()+15
+      if info and info.isCommodity then
+        M.watchPreview={id=id,price=lowest,key=bestKey,at=GetTime()}
+        if PlaySound and SOUNDKIT and SOUNDKIT.READY_CHECK then PlaySound(SOUNDKIT.READY_CHECK) end
+      elseif info then
+        stagingQuickQuote=true
+        local ok,started=pcall(M.startMaterial,id,{n=1,cap=lowest,key=bestKey})
+        stagingQuickQuote=nil
+        if ok and started and M.quote then
+          M.quote.watch=true;M.quote.snipe=true;rule.checks=(rule.checks or 0)+1
+        elseif not ok and M.quote then M.cancelMaterial() end
+      end
+    end
     rule.ask=lowest;rule.key=bestKey;rule.at=time();waiting=nil;M.watchChanged=true
   end
 end)
@@ -86,7 +107,7 @@ if hooksecurefunc and api.SendBrowseQuery then
   hooksecurefunc(api,'SendBrowseQuery',function(query)if poll and (not waiting or query~=waiting.query) then M.monitorPrices(false) end end)
 end
 if hooksecurefunc and api.SendSearchQuery then
-  hooksecurefunc(api,'SendSearchQuery',function()if poll then M.monitorPrices(false) end end)
+  hooksecurefunc(api,'SendSearchQuery',function()if poll and not stagingQuickQuote then M.monitorPrices(false) end end)
 end
 if hooksecurefunc and api.SearchForItemKeys then
   hooksecurefunc(api,'SearchForItemKeys',function()if poll then M.monitorPrices(false) end end)

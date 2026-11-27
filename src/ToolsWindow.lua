@@ -21,8 +21,14 @@ local function input(x,y,w)
 end
 local refresh
 local function add(a,b,label,fn) content[#content+1]={a=a,b=b,label=label,fn=fn} end
-local function action(i,label,fn)
-  actions[i]:SetText(label);actions[i]:Show();actions[i]:SetScript('OnClick',function()
+local function action(i,label,fn,offer)
+  local button=actions[i]
+  button:SetText(label);button:Show()
+  button:SetScript('OnMouseDown',function(self)self.pressedOffer=offer or false end)
+  button:SetScript('OnClick',function(self)
+    local changed=self.pressedOffer~=nil and self.pressedOffer~=(offer or false)
+    self.pressedOffer=nil
+    if changed then message:SetText('Offer changed. Review the current total.');return end
     local msg=fn();refresh();if msg then message:SetText(msg) end
   end)
 end
@@ -427,6 +433,7 @@ function M.openTools(tab,value)
         if q and q.total and not q.counted and q.total<=q.max then
           local rule=M.session().watches[q.id]
           if rule then rule.quoted=(rule.quoted or 0)+1 end
+          if q.snipe and PlaySound and SOUNDKIT and SOUNDKIT.READY_CHECK then PlaySound(SOUNDKIT.READY_CHECK) end
           q.counted=true
         end
         local state=q and (q.total or 'checking')

@@ -311,7 +311,7 @@ events:SetScript('OnEvent',function(_,event,arg,second,third)
     capture=GetTime()+.15;craftCapture=event=='CRAFT_SHOW' or event=='CRAFT_UPDATE'
   elseif event=='UNIT_SPELLCAST_START' and arg=='player' then M.startCast(third)
   elseif event=='UNIT_SPELLCAST_SUCCEEDED' and arg=='player' then M.completed(third)
-  elseif (event=='ITEM_SEARCH_RESULTS_UPDATED' or event=='ITEM_SEARCH_RESULTS_ADDED') and M.quote and M.quote.key and arg and arg.itemID==M.quote.id then
+  elseif (event=='ITEM_SEARCH_RESULTS_UPDATED' or event=='ITEM_SEARCH_RESULTS_ADDED') and M.quote and M.quote.key and arg and arg.itemID==M.quote.id and (arg.itemLevel or 0)==(M.quote.key.itemLevel or 0) and (arg.itemSuffix or 0)==(M.quote.key.itemSuffix or 0) and (arg.battlePetSpeciesID or 0)==(M.quote.key.battlePetSpeciesID or 0) then
     local r=M.materialOffer(arg)
     if r then M.quote.auctionID=r.auctionID;M.quote.total=r.buyoutAmount;notice:SetText('Live buyout '..money(r.buyoutAmount)..' for one. Click Confirm.')
     else M.cancelMaterial();notice:SetText('No matching item at the expected price.') end

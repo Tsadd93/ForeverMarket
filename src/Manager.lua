@@ -196,8 +196,10 @@ local function restoreLot(lot,r,fee)
 end
 function M.recordMarket(kind,e)
   if kind=='cancel_confirmed' then
-    local c=M.pendingCancel;M.pendingCancel=nil
-    if c and GetTime()-c.at<10 then
+    local c=M.pendingCancel
+    if c and c.queued and (not e or e.auctionID~=c.id) then c.removalNotice=true;return end
+    M.pendingCancel=nil
+    if c and GetTime()-c.at<(c.queued and 13 or 10) then
       local a=M.account();a.relist=a.relist or {};a.relist[c.item]=time()
       for _,lot in ipairs(ForeverMarketTradingFund().lots) do
         if lot.auctionId==c.id and lot.n>0 and lot.basis then
@@ -381,6 +383,7 @@ local function ownedDetail(r)
   return 'Competitive / bulk '..money(bulk)
 end
 local function cancel(r)
+  if M.pendingCancel and GetTime()-M.pendingCancel.at<12 then return "Waiting for the previous cancellation." end
   local live=owner(r.auctionID)
   if not live or live.status~=0 or live.quantity~=r.quantity or live.buyoutAmount~=r.buyoutAmount or not api.CanCancelAuction or not api.CanCancelAuction(r.auctionID) then
     confirm=nil;return 'Listing changed or cannot be cancelled.'
@@ -461,6 +464,12 @@ local function entries()
   end
   if mode=='Fund' then return M.fundSummary(fundSection).rows
   elseif mode=='Auctions' then
+    local current,queue=M.cancelQueueCurrent()
+    if queue then
+      if current then add(nameOf(current.key.itemID)..' x '..current.qty,'Your listing / '..money(current.gross)..' total') end
+      add('Queue progress',queue.removed..' removed / '..queue.skipped..' skipped')
+      return items
+    end
     for i=1,api.GetNumOwnedAuctions() do
       local r=api.GetOwnedAuctionInfo(i)
       if r and r.itemKey and (not undercutsOnly or ownedDetail(r):match("^Review for relist")) then
@@ -585,6 +594,15 @@ local function create()
   local function command(m,x,w,text,fn)
     control(m,button(panel,x,-98,w,text,function()local result=fn();if result then status:SetText(result) end;render()end))
   end
+  local displayedCancel,pressedCancel
+  command('Auctions',12,140,'Scan cancels',function()return M.startCancelQueue() end)
+  local cancelNext=control('Auctions',button(panel,159,-98,138,'Cancel shown',function()
+    local why=M.cancelQueueOne(pressedCancel or displayedCancel)
+    pressedCancel=nil
+    if why then status:SetText(why) end
+  end))
+  cancelNext:SetScript('OnMouseDown',function()pressedCancel=displayedCancel end)
+  command('Auctions',304,100,'Stop queue',function()M.stopCancelQueue();return 'Queue stopped.' end)
   command('Shopping',8,90,'Save item',function()
     local id=itemID(entry:GetText());local n=whole(target:GetText(),9999);local limit=whole(cap:GetText(),9999999999)
     if not id or not n or n<1 or not limit then return 'Enter item, quantity (1–9999), and maximum copper per item (0 for market).' end
@@ -639,8 +657,13 @@ local function create()
   button(panel,10,-341,72,'Previous',function()page=math.max(1,page-1);render()end)
   button(panel,162,-341,72,'Next',function()page=page+1;render()end)
   local elapsed=0
-  panel:SetScript('OnUpdate',function(_,dt)elapsed=elapsed+dt;if elapsed>.5 then elapsed=0;panel.inputs();render() end end)
-  panel:SetScript('OnHide',function()confirm=nil end)
+  panel:SetScript('OnUpdate',function(_,dt)elapsed=elapsed+dt;if elapsed>.5 then elapsed=0;panel.inputs();render()
+    if mode=='Auctions' then
+      local why=M.cancelQueueTick();local line=M.cancelQueueText()
+      if why or line then status:SetText(why or line) end
+      displayedCancel=M.cancelQueueReady();cancelNext:SetEnabled(displayedCancel~=nil and displayedCancel~=false)
+    else M.stopCancelQueue() end end end)
+  panel:SetScript('OnHide',function()confirm=nil;M.stopCancelQueue() end)
   hooksecurefunc(AuctionHouseFrame,'SetDisplayMode',function()panel:Hide()end)
 end
 function M.openFundSection(section)

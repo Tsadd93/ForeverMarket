@@ -1,6 +1,8 @@
 local M=ForeverMarketTools
 local functions={min={1,32},max={1,32},avg={1,32},first={1,32},ifgt={3,4},ifgte={3,4},iflt={3,4},iflte={3,4},ifeq={3,4}}
 local market={dbmarket=true,dbhistorical=true,dbregionmarketavg=true,dbregionhistorical=true,dbminbuyout=true}
+local tsmOnly={dbregionsaleavg=true,avgbuy=true,avgsell=true,smartavgbuy=true,vendorbuy=true,destroy=true,matprice=true,
+  auctioningopmin=true,auctioningopnormal=true,auctioningopmax=true,shoppingopmax=true,sniperopmax=true}
 local native={fmrealm=true,crafting=true,vendorsell=true,itemlevel=true}
 local units={g=10000,s=100,c=1}
 -- Parse a bounded expression language. Imported text is never evaluated as Lua.
@@ -45,7 +47,7 @@ function M.compilePrice(source,aliases)
         if seen[id] then error('Circular custom source '..id,0) end
         seen[id]=true;local n=parse(aliases[id],depth+1);seen[id]=nil;return n
       end
-      if not market[id] and not native[id] then error('Unknown price source '..id,0) end
+      if not market[id] and not tsmOnly[id] and not native[id] then error('Unknown price source '..id,0) end
       refs[id]=true;return id
     end
     local precedence={['+']=1,['-']=1,['*']=2,['/']=2}
@@ -99,8 +101,8 @@ function M.ruleSource(id,key,useLocal)
     local _,_,_,level,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(id)
     local n=key=='vendorsell' and vendor or key=='itemlevel' and level
     if type(n)=='number' and n>0 then return n end
-  elseif market[key] then
-    if useLocal then
+  elseif market[key] or tsmOnly[key] then
+    if useLocal and market[key] then
       local n,why=M.policyFloor(id,true,{realmPct=100});if not why and n>0 then return n end
     elseif TSM_API and TSM_API.GetCustomPriceValue then
       local ok,n=pcall(TSM_API.GetCustomPriceValue,key,'i:'..id)

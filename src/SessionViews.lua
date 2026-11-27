@@ -12,6 +12,9 @@ function M.renderSessionPage(mode,ui)
       M.monitorPrices(not M.priceMonitorActive())
     end)
     summary:SetText(M.priceMonitorActive() and 'Checking listed asks. Close this page to stop.' or 'Select an item below to edit its ceiling. Enter zero to remove it.')
+    action(4,M.session().snipe and 'Quick quotes: on' or 'Quick quotes: off',function()
+      M.session().snipe=not M.session().snipe
+    end)
     local ids={};for id in pairs(M.session().watches) do ids[#ids+1]=id end;table.sort(ids)
     for _,id in ipairs(ids) do
       local rule=M.session().watches[id]
@@ -20,23 +23,28 @@ function M.renderSessionPage(mode,ui)
       end)
     end
     local q=M.quote and M.quote.watch and M.quote
+    local preview=M.watchPreview
+    local auction=q and q.auctionID
     local shown=q and q.total
-    if q and shown then summary:SetText('Live quote for one '..(q.link or name(q.id))..' / '..coins(shown)..' total') end
-    action(3,shown and 'Confirm purchase' or 'Check live quote',function()
+    if preview then summary:SetText('|cffffd100Commodity found|r / '..name(preview.id)..' / '..coins(preview.price)..' each') end
+    if q and shown then summary:SetText('|cffffd100Live quote|r for one '..(q.link or name(q.id))..' / '..coins(shown)..' total') end
+    action(3,shown and 'Confirm purchase' or preview and 'Get firm quote' or 'Check live quote',function()
       if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
-      local id=ui.itemID(field:GetText());local rule=M.session().watches[id]
+      local id=q and q.snipe and q.id or preview and preview.id or ui.itemID(field:GetText());local rule=M.session().watches[id]
       if not rule then return 'Select a watched item first.' end
-      M.monitorPrices(false)
+      if preview and (preview~=M.watchPreview or GetTime()-preview.at>=9) then return 'Listing changed. Review the next offer.' end
+      if not preview and not (q and q.snipe) then M.monitorPrices(false) end
       if shown then
-        if q~=M.quote or q.total~=shown or q.id~=id or shown>rule.cap then return 'Quote changed. Review the current total.' end
+        if q~=M.quote or q.total~=shown or q.auctionID~=auction or q.id~=id or shown>rule.cap then return 'Quote changed. Review the current total.' end
         local ok,why=M.confirmMaterial();return why or (ok and 'Purchase requested.' or 'Quote expired.')
       end
       if q and GetTime()-q.at<9 and q.id==id then return 'Waiting for the auction house.' end
-      local ok,why=M.startMaterial(id,{n=1,cap=rule.cap,key=rule.key})
+      local ok,why=M.startMaterial(id,{n=1,cap=preview and math.min(preview.price,rule.cap) or rule.cap,key=rule.key})
       if not ok then return why end
+      if preview then M.watchPreview=nil;M.quote.snipe=true end
       M.quote.watch=true;rule.checks=(rule.checks or 0)+1
       return 'Checking one unit against your ceiling.'
-    end)
+    end,shown and (q.id..'/'..(q.auctionID or 0)..'/'..shown..'/'..q.at) or preview)
   elseif mode=='Sell session' then
     local s=M.session()
     hint:SetText('Resume your selling session here. Your protected items and reserves apply on Market Sell.')
