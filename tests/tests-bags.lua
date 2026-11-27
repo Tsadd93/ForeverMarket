@@ -21,6 +21,7 @@ local function noop()end
 local function widget(parent)
  local w={parent=parent,shown=true}
  for _,k in ipairs({'SetPoint','SetSize','SetHeight','SetWidth','SetFrameLevel','ClearAllPoints','SetAllPoints','SetColorTexture','SetFont','RegisterEvent'})do w[k]=noop end
+ function w:SetPoint(point,parent,relative,x,y)self.anchor={point,parent,relative,x,y}end
  function w:SetParent(p)self.parent=p end
  function w:GetParent()return self.parent end
  function w:IsShown()return self.shown end
@@ -50,6 +51,7 @@ dofile('src/Bags.lua')
 local s={bag=0,slot=1,loc={},link='item:42',count=1};local q={observed=10}
 ForeverMarketVendorDecision(s,q,true);tick(nil,1)
 assert(badge.text:find('SELL') and tint.shown and clear.shown and clear.parent==bag)
+assert(clear.anchor[1]=='BOTTOMLEFT' and clear.anchor[2]==bag and clear.anchor[3]=='BOTTOMLEFT')
 clear:OnClick();assert(badge.text=='' and not tint.shown and not clear.shown)
 ForeverMarketVendorDecision(s,q,true);tick(nil,1);assert(not tint.shown)
 q.observed=20;ForeverMarketVendorDecision(s,q,true);tick(nil,1);assert(tint.shown)

@@ -151,7 +151,9 @@ local function refreshBags()
   end
   if clearButton:GetParent()~=anchor then clearButton:SetParent(anchor) end
   clearButton:SetFrameLevel(anchor:GetFrameLevel()+5);clearButton:ClearAllPoints()
-  if (anchor:GetLeft() or 0)>135 then clearButton:SetPoint('TOPRIGHT',anchor,'TOPLEFT',-2,0)
+  if anchor==ContainerFrameCombinedBags then
+    clearButton:SetSize(122,18);clearButton:SetPoint('BOTTOMLEFT',anchor,'BOTTOMLEFT',10,4)
+  elseif (anchor:GetLeft() or 0)>135 then clearButton:SetSize(130,23);clearButton:SetPoint('TOPRIGHT',anchor,'TOPLEFT',-2,0)
   else clearButton:SetPoint('TOPLEFT',anchor,'TOPLEFT',4,-2) end
   clearButton:Show()
 end
