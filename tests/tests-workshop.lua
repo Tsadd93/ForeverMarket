@@ -5,7 +5,7 @@ local bags,names,bound,owned={}, {}, {}, {}
 local function frame(kind,parent)
   local f={shown=true,parent=parent,kind=kind,scripts={}}
   local function noop() end
-  for _,k in ipairs({'EnableMouseWheel','SetVerticalScroll','ClearAllPoints','SetPoint','SetSize','SetHeight','SetWidth','SetJustifyH','SetWordWrap','SetAutoFocus','SetFrameLevel','EnableMouse','SetHighlightTexture','SetScrollChild','ClearFocus','SetTextColor','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetTexture','SetColorTexture','SetAtlas','SetFrameStrata'}) do f[k]=noop end
+  for _,k in ipairs({'EnableMouseWheel','SetVerticalScroll','ClearAllPoints','SetPoint','SetSize','SetHeight','SetWidth','SetJustifyH','SetWordWrap','SetAutoFocus','SetFrameLevel','EnableMouse','SetHighlightTexture','SetScrollChild','ClearFocus','SetTextColor','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetTexture','SetColorTexture','SetAtlas','SetFrameStrata','SetNormalFontObject','SetDisabledFontObject','SetHighlightFontObject'}) do f[k]=noop end
   f.SetSize=function(self,w,h)self.width,self.height=w,h end
   f.ClearAllPoints=function(self)self.anchor=nil end
   f.SetPoint=function(self,anchor,a,b,c,d)
@@ -125,7 +125,12 @@ assert(not M.quote and confirms==0)
 local function craftButton(caption)
   for _,b in ipairs(buttons) do if b.text==caption and b:IsVisible() then return b end end
 end
+assert(craftButton('Materials').mark.shown and not craftButton('Materials').enabled)
+craftButton('Craft settings').scripts.OnClick()
+assert(craftButton('Save fees') and not craftButton('Supply plan'))
 craftButton('Build list').scripts.OnClick()
+assert(craftButton('Build list').mark.shown and not craftButton('Materials').mark.shown)
+assert(craftButton('Supply plan') and not craftButton('Save fees'))
 assert(craftButton('Remove') and craftButton('Check'))
 craftButton('Check').scripts.OnClick()
 assert(confirms==0 and M.quote.id==mat)

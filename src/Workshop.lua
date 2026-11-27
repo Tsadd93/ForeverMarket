@@ -77,8 +77,17 @@ local function render()
   end
   return #list
 end
+local navigation={}
+local updateToolbar
 local function switch(nextMode)
   M.cancelMaterial();mode=nextMode;page=1
+  for view,tab in pairs(navigation) do
+    local selected=view==mode
+    tab:SetEnabled(not selected);tab.mark:SetShown(selected)
+    if selected then tab:SetBackdropColor(.30,.20,.07,.98);tab:SetBackdropBorderColor(.93,.72,.30,1)
+    else tab:SetBackdropColor(.12,.10,.08,.95);tab:SetBackdropBorderColor(.43,.36,.25,1) end
+  end
+  updateToolbar(false)
   local n=render()
   notice:SetText(n==0 and (mode=='Recipes' and 'Open a learned profession window to capture its recipes.' or 'Your build list is empty.') or mode=='Build list' and 'Check a missing reagent for a live total, then click Buy.' or '')
 end
@@ -87,28 +96,50 @@ local function create()
   if panel or not ah then return end
   panel=CreateFrame('Frame',nil,ah);panel:SetPoint('TOPLEFT',20,-60);panel:SetPoint('BOTTOMRIGHT',-30,45);panel:Hide()
   mode='Recipes';page=1
-  for i,m in ipairs({'Recipes','Build list','Materials'}) do button(panel,(i-1)*85,0,82,m,function() switch(m) end) end
-  text(panel,263,-5,50):SetText('Crafts');qty=input(panel,307,0,38);qty:SetText('1');qty:SetScript('OnEnterPressed',function(self)self:ClearFocus();render()end)
-  button(panel,352,0,70,'Refresh',function()
+  for i,view in ipairs({'Recipes','Build list','Materials','Restock'}) do
+    local tab=CreateFrame('Button',nil,panel,'BackdropTemplate')
+    tab:SetPoint('TOPLEFT',4+(i-1)*96,0);tab:SetSize(94,25)
+    tab:SetBackdrop({bgFile='Interface\\Buttons\\WHITE8X8',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',edgeSize=8})
+    tab:SetNormalFontObject('GameFontNormal');tab:SetDisabledFontObject('GameFontHighlight')
+    tab:SetHighlightFontObject('GameFontHighlight');tab:SetText(view)
+    tab.mark=tab:CreateTexture(nil,'OVERLAY');tab.mark:SetSize(86,3)
+    tab.mark:SetPoint('BOTTOM',0,1);tab.mark:SetColorTexture(1,.77,.28,1)
+    tab:SetScript('OnClick',function()switch(view)end);navigation[view]=tab
+  end
+  local actions=CreateFrame('Frame',nil,panel);actions:SetPoint('TOPLEFT',4,-30);actions:SetSize(650,24)
+  local pricing=CreateFrame('Frame',nil,panel);pricing:SetPoint('TOPLEFT',4,-30);pricing:SetSize(650,24)
+  local crafts=text(actions,0,-5,46);crafts:SetText('Crafts')
+  qty=input(actions,48,0,38);qty:SetText('1');qty:SetScript('OnEnterPressed',function(self)self:ClearFocus();render()end)
+  local refresh=button(actions,100,0,75,'Refresh',function()
     if ForeverMarketSnapshot then ForeverMarketSnapshot() end
     qty:ClearFocus();render()
   end)
-  text(panel,4,-34,78):SetText('AH cut %');fee=input(panel,75,-30,40)
-  text(panel,130,-34,155):SetText('Lost deposit (c per item)');loss=input(panel,284,-30,48)
-  button(panel,342,-30,80,'Save fees',function()
+  text(pricing,0,-5,65):SetText('AH cut %');fee=input(pricing,68,0,40)
+  text(pricing,120,-5,155):SetText('Lost deposit (c per item)');loss=input(pricing,279,0,48)
+  button(pricing,338,0,80,'Save fees',function()
     local f,l=tonumber(fee:GetText()),tonumber(loss:GetText())
     if not f or f<0 or math.floor(f*100+.5)>=10000 or not l or l<0 or l~=math.floor(l) or l>100000000 then notice:SetText('Enter a fee below 100% and a whole copper allowance.');return end
     local s=M.settings();s.cutBP=math.floor(f*100+.5);s.lostDepositPerUnit=l
     fee:ClearFocus();loss:ClearFocus();render();notice:SetText('Pricing settings saved.')
   end)
-  button(panel,433,-30,160,'Use stored stock',function(self)
+  button(pricing,428,0,160,'Use stored stock',function(self)
     local a=M.account();a.useTransfers=not a.useTransfers
     self:SetText(a.useTransfers and 'Use bag stock only' or 'Use stored stock');M.cancelMaterial();M.invalidate();render()
     notice:SetText(a.useTransfers and 'Shopping accounts for recently observed transferable stock. Collect it before crafting.' or 'Shop using current bag quantities.')
   end):SetText(M.account().useTransfers and 'Use bag stock only' or 'Use stored stock')
-  button(panel,424,0,55,'Manage',function() if M.openManager then M.openManager() end end)
-  button(panel,487,0,105,'Restock',function()switch('Restock')end)
-  button(panel,599,0,58,'Plan',function()M.openTools('Supply plan')end)
+  local manager=button(actions,181,0,125,'Auction manager',function()if M.openManager then M.openManager()end end)
+  local plan=button(actions,312,0,95,'Supply plan',function()M.openTools('Supply plan')end)
+  local toggle=button(panel,552,0,113,'Craft settings',function()updateToolbar(not pricing:IsVisible())end)
+  updateToolbar=function(showSettings)
+    actions:SetShown(not showSettings);pricing:SetShown(showSettings)
+    toggle:SetText(showSettings and 'Close settings' or 'Craft settings')
+    local hasBatch=mode=='Recipes'
+    crafts:SetShown(hasBatch);qty:SetShown(hasBatch)
+    local offset=hasBatch and 100 or 0
+    refresh:ClearAllPoints();refresh:SetPoint('TOPLEFT',offset,0)
+    manager:ClearAllPoints();manager:SetPoint('TOPLEFT',offset+81,0)
+    plan:ClearAllPoints();plan:SetPoint('TOPLEFT',offset+212,0)
+  end
   notice=text(panel,4,-58,650)
   ForeverMarketResults(panel,80,{{'Recipe / material',0},{'Missing materials',202},{'Profit / cost',447},{'Action',566}})
   for i=1,9 do
