@@ -847,7 +847,7 @@ local function render()
   if GetTime()<fundMessageUntil then return end
   detail:SetText('')
   if not running and not completed then
-    note(pausedMarket and 'Paused. Resume to continue checking remaining offers.' or ('Ready / '..GetRealmName()..' / '..(UnitFactionGroup and UnitFactionGroup('player') or '')))
+    note(pausedMarket and 'Paused. Resume to continue checking remaining offers.' or 'Set your fund and minimum profit, then choose Find flips.')
     return
   end
   if fund().pending then note('Waiting for purchase confirmation.')
@@ -855,7 +855,7 @@ local function render()
   elseif scanCash()==0 then note('No trading cash available for a purchase.')
   elseif missingScan then note('Building local history.');detail:SetText('Browse > Below vendor works after a Market Scan.')
   elseif investScan and totalLeads==0 then note('Invest: no qualifying recovery patterns');detail:SetText(('Best coverage: %s, %d days / 14 minimum; repeated rebounds required.'):format(report.bestItem and C_Item.GetItemNameByID(report.bestItem) or 'none',report.bestDays or 0))
-  elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates · %d junk filtered · %d uncached'):format(junkCount,unknownCount))
+  elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates Â· %d junk filtered Â· %d uncached'):format(junkCount,unknownCount))
   else
     local progress=('%g%% | %d/%d resolved | %d unanswered'):format(ForeverMarketMarginBP()/100,math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
     if #categories>0 then
@@ -866,12 +866,12 @@ local function render()
     elseif browse then detail:SetText('Browsing category')
     else detail:SetText(scanWait or '') end
     if snapshotMode then
-      progress=('Bulk · %d/%d resolved · %d unanswered'):format(math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
-      if firstResult then progress=progress..(' · first buy %.1fs'):format(firstResult) end
+      progress=('Bulk Â· %d/%d resolved Â· %d unanswered'):format(math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
+      if firstResult then progress=progress..(' Â· first buy %.1fs'):format(firstResult) end
     end
-    progress=progress..(' | %d junk · %d stocked'):format(junkCount,report and report.stockSkipped or 0)
+    progress=progress..(' | %d junk Â· %d stocked'):format(junkCount,report and report.stockSkipped or 0)
     if unknownCount>0 then progress=progress..(' | %d uncached'):format(unknownCount) end
-    if buyCount>0 then note((investScan and 'Invest / ' or '')..progress);if completed then detail:SetText(('Complete · %d shopping list items'):format(buyCount)) end
+    if buyCount>0 then note((investScan and 'Invest / ' or '')..progress);if completed then detail:SetText(('Complete Â· %d shopping list items'):format(buyCount)) end
     elseif browse or categoryIndex<=#categories or search or cursor<=#leads then note(progress)
     else note(completed and ('Complete / no qualifying buys / '..unanswered..' unanswered') or progress);local reason,most='No eligible live offers',0
       for _,pair in ipairs({{'Too little history',report.thinHistory},{'Over budget',report.overBudget},{'Margin too small',report.weakSpread},{'No supply',report.noSupply},{'Already stocked',report.stockSkipped}}) do
@@ -996,7 +996,7 @@ local function tick(refreshUI)
   if waitingSince then
     local data,state=ForeverMarketSnapshot()
     if not data and (state=='pending' or state=='throttled') and GetTime()-waitingSince<3 then
-      updateReport(state);note('Receiving market snapshot');detail:SetText('');return
+      updateReport(state);note('Receiving market snapshotÂ…');detail:SetText('');return
     end
     awaitingBulk=not data and state=='pending';nextBulkCheck=GetTime()+1
     waitingSince=nil;snapshotMode=data~=nil;report.source=data and "bulk" or "browse";report.snapshotStatus=state or (data and "ready" or "unavailable");candidates(false,data)
@@ -1021,7 +1021,7 @@ local function tick(refreshUI)
     end
     if #unresolved>0 and GetTime()-f.at<4 then
       f.items=unresolved;f.next=GetTime()+.5
-      note('Checking item quality · '..#unresolved..' pending');detail:SetText('');return
+      note('Checking item quality Â· '..#unresolved..' pending');detail:SetText('');return
     end
     unknownCount=#unresolved;pendingFilter=nil
     rankCandidates(f.snapshot,f.grouped,scanCash())
@@ -1085,14 +1085,22 @@ local function create()
   balance=label(panel,4,-4);balance:SetWidth(160);balance:SetJustifyH('LEFT');balance:SetWordWrap(false)
   status=label(panel,4,-37);detail=label(panel,4,-57)
   for _,line in ipairs({status,detail}) do
-    line:SetPoint('TOPRIGHT',panel,'TOPRIGHT',line==status and -6 or -216,line==status and -37 or -57)
+    line:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-8,line==status and -37 or -57)
     line:SetJustifyH('LEFT');line:SetWordWrap(false)
   end
   if ForeverMarketTools and ForeverMarketTools.fundSummary then
     for i,s in ipairs({{'Spendable','cash'},{'Stock cost','inventory'},{'Due est.','pending'},{'Realized','profit'}}) do
-      local b=CreateFrame('Button',nil,panel,'UIPanelButtonTemplate')
-      b:SetSize(157,20);b:SetPoint('TOPLEFT',(i-1)*160,-82);b.caption=s[1];b.section=s[2]
+      local b=CreateFrame('Button',nil,panel)
+      b:SetNormalFontObject('GameFontNormalSmall')
+      b:SetHighlightFontObject('GameFontHighlightSmall')
+      b:SetHighlightTexture('Interface\\QuestFrame\\UI-QuestTitleHighlight')
+      b:SetSize(172,20);b:SetPoint('TOPLEFT',(i-1)*175,-82);b.caption=s[1];b.section=s[2]
       b:SetScript('OnClick',function()ForeverMarketTools.openFundSection(s[2])end)
+      local hints={cash='Cash available for new purchases.',inventory='Purchase cost of stock still held.',pending='Estimated proceeds awaiting collection.',profit='Realized profit from matched fund sales.'}
+      b:SetScript('OnEnter',function(self)
+        GameTooltip:SetOwner(self,'ANCHOR_TOP');GameTooltip:AddLine(self:GetText());GameTooltip:AddLine(hints[self.section]..' Click for details.',1,1,1,true);GameTooltip:Show()
+      end)
+      b:SetScript('OnLeave',function()GameTooltip:Hide()end)
       fundButtons[i]=b
     end
   end
@@ -1114,9 +1122,9 @@ local function create()
     edit:SetText(cash/10000);edit:ClearFocus()
     clearQuote();render();note('Fund saved.')
   end)
-  label(panel,333,-4):SetText('Target %')
+  label(panel,332,-4):SetText('Min. profit %')
   local target=CreateFrame('EditBox',nil,panel,'InputBoxTemplate')
-  target:SetSize(38,24);target:SetPoint('TOPLEFT',390,0);target:SetAutoFocus(false)
+  target:SetSize(38,24);target:SetPoint('TOPLEFT',413,0);target:SetAutoFocus(false)
   local function start()
     if watchScan~="bench" then benchmarkCash=nil;benchmarkQueue=nil end
     local pct=tonumber(target:GetText())
@@ -1151,7 +1159,7 @@ local function create()
     b:SetSize(65,24);b:SetPoint('TOPLEFT',x,0);b:SetText(text);b:SetScript('OnClick',fn)
     return b
   end
-  local startButton=control('Start',442,function()investScan=false;watchScan=false;start() end)
+  local startButton=control('Find flips',466,function()investScan=false;watchScan=false;start() end)
   local resume=control('Resume',0,function()
     if not pausedMarket and completed and next(retryPool) then
       if fund().pending or quote then return end
@@ -1172,27 +1180,38 @@ local function create()
     verified={};stock=nil;pausedMarket=nil;running=true;report.finished=nil;report.cash=available()
     fundMessageUntil=0;scanWake=true;render()
   end)
-  if resume.ClearAllPoints then resume:ClearAllPoints() end;resume:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-73,-57)
-  local stopButton=control('Stop',511,function()
+  resume:ClearAllPoints();resume:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-6,-54)
+  detail:ClearAllPoints();detail:SetPoint('TOPLEFT',4,-57);detail:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-80,-57)
+  local stopButton=control('Stop',536,function()
     benchmarkQueue=nil
     pausedMarket=nil;watchScan=false;running=false;completed=false;search=nil;browse=nil;clearQuote();fundMessageUntil=0;render()
   end)
-  control('Restart',580,start)
-  local invest=control('Invest',0,function()investScan=true;watchScan=false;start()end)
-  if invest.ClearAllPoints then invest:ClearAllPoints() end;invest:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-32)
+  local menu=CreateFrame('Frame',nil,panel,'BackdropTemplate')
+  menu:SetSize(382,207);menu:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-4,-26)
+  menu:SetFrameLevel(panel:GetFrameLevel()+25);menu:EnableMouse(true)
+  menu:SetBackdrop({bgFile='Interface\\Buttons\\WHITE8X8',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',edgeSize=12})
+  menu:SetBackdropColor(.10,.08,.06,.99);menu:SetBackdropBorderColor(.67,.55,.34,1);menu:Hide()
+  local more=control('Scan tools',610,function()if menu:IsShown() then menu:Hide() else menu:Show() end end)
+  more:SetWidth(96)
+  local function option(i,title,help,fn)
+    local y=-10-(i-1)*32
+    local b=CreateFrame('Button',nil,menu,'UIPanelButtonTemplate')
+    b:SetPoint('TOPLEFT',9,y);b:SetSize(125,24);b:SetText(title)
+    b:SetScript('OnClick',function()menu:Hide();fn()end)
+    local t=label(menu,141,y-3);t:SetWidth(231);t:SetJustifyH('LEFT');t:SetText(help)
+  end
+  option(1,'Restart scan','Start this scan again with your current settings.',start)
+  option(2,'Buy price dips','Find items with a history of price recovery.',function()investScan=true;watchScan=false;start()end)
   if ForeverMarketTools then
-  local explain=control('Report',0,function()SlashCmdList.FOREVERMARKET('scanstatus')end)
-  explain:ClearAllPoints();explain:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-57)
-  local wb=control('Watch',0,function()
-    if not ForeverMarketTools or not ForeverMarketTools.favorite then return end
-    investScan=false;watchScan=true;watchAgain=GetTime()+60;start()
-  end)
-  wb:ClearAllPoints();wb:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-72,-32)
-  local radar=control('Radar',0,function()
-    investScan=false;watchScan='market';watchAlerts={};watchAgain=GetTime()+60;start()
-  end)
-  radar:ClearAllPoints();radar:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-57) end
-  if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-215,-37) end
+    option(3,'Watch favorites','Repeat deal checks on your favorite items.',function()
+      investScan=false;watchScan=true;watchAgain=GetTime()+60;start()
+    end)
+    option(4,'Watch market','Repeat deal checks across the market.',function()
+      investScan=false;watchScan='market';watchAlerts={};watchAgain=GetTime()+60;start()
+    end)
+    option(5,'Craft materials','Open the shopping list for your crafts.',ForeverMarketTools.openMaterials)
+    option(6,'Scan report','Print the latest scan details in chat.',function()SlashCmdList.FOREVERMARKET('scanstatus')end)
+  end
   scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-135);scroll:SetPoint('BOTTOMRIGHT',-26,4)
   content=CreateFrame('Frame',nil,scroll);content:SetSize(678,1);scroll:SetScrollChild(content)
   panel:SetScript('OnShow',function()
@@ -1201,6 +1220,7 @@ local function create()
     edit:SetText(fund().cash/10000);target:SetText(ForeverMarketMarginBP()/100);render()
   end)
   panel:SetScript('OnHide',function()
+    menu:Hide()
     benchmarkQueue=nil
     if running and not watchScan then
       pausedMarket=GetRealmName()

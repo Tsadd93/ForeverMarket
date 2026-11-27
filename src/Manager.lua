@@ -688,7 +688,7 @@ events:SetScript('OnEvent',function(_,ev)
     else ForeverMarketSetVenue(false) end
     local parent=AuctionHouseFrame and AuctionHouseFrame.AuctionsFrame
     if parent and not parent.foreverManager then
-      parent.foreverManager=button(parent,8,-5,115,'Manage auctions',M.openManager)
+      parent.foreverManager=button(parent,225,-4,110,'Manage auctions',M.openManager)
     end
   elseif ev=='AUCTION_HOUSE_CLOSED' then if panel then panel:Hide() end
   else render() end

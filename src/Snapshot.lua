@@ -16,6 +16,9 @@ end
 local function scope()
   return table.concat({GetCurrentRegion(),GetRealmID and GetRealmID() or '',GetRealmName(),UnitFactionGroup('player')},'|')
 end
+function ForeverMarketSnapshotProgress()
+  if job and job.scope==scope() then return job.index,job.total,job.rows end
+end
 function ForeverMarketReadySnapshot()
   if cached and cached.scope==scope() and GetTime()-cached.at<900 then return cached end
 end
@@ -87,6 +90,7 @@ frame:SetScript('OnUpdate',function()
       d.high=math.max(d.high or 0,p)
       qty=qty+n
     end
+    d.quantity=qty
     job.books[id]=d
     -- Replication identifies the base item; variant-specific prices still
     -- come from keyed browse and live item searches.

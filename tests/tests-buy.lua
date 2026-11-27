@@ -15,7 +15,7 @@ local function frame()
  function f:SetScript(k,v)self[k]=v end
  function f:IsVisible()return true end
  f.GetFrameLevel=function()return 2 end;f.CreateTexture=frame
- for _,k in ipairs({'SetFrameLevel','EnableMouse','SetHighlightTexture','SetWidth','SetJustifyH','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetTextColor','SetTexture','SetWordWrap'}) do f[k]=function()end end
+ for _,k in ipairs({'SetFrameLevel','ClearAllPoints','SetNormalFontObject','SetHighlightFontObject','EnableMouse','SetHighlightTexture','SetWidth','SetJustifyH','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetTextColor','SetTexture','SetWordWrap'}) do f[k]=function()end end
  f.CreateFontString=frame
  return f
 end
@@ -48,7 +48,7 @@ end
 dispatch(nil,'AUCTION_HOUSE_SHOW')
 local start,stop,target,edit,set
 for _,b in ipairs(buttons) do
- if b.text=='Start' then start=b elseif b.text=='Stop' then stop=b elseif b.text=='Set fund (gold)' then set=b
+ if b.text=='Find flips' then start=b elseif b.text=='Stop' then stop=b elseif b.text=='Set fund (gold)' then set=b
  elseif b.kind=='EditBox' then if not edit then edit=b else target=b end end
 end
 local function begin() panel:OnShow();start:OnClick() end
@@ -449,7 +449,7 @@ ForeverMarketSnapshot=function()return {at=elapsed,books={[41001]=dip}} end
 C_AuctionHouse.GetNumCommoditySearchResults=function()return 1 end
 C_AuctionHouse.GetCommoditySearchResultInfo=function()return {unitPrice=70,quantity=100} end
 local invest
-for _,b in ipairs(buttons) do if b.text=='Invest' then invest=b end end
+for _,b in ipairs(buttons) do if b.text=='Buy price dips' then invest=b end end
 edit:SetText('1');set:OnClick()
 ordered={};invest:OnClick();update();dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001)
 local pick=observedRows[1].pick

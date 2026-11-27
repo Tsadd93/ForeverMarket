@@ -175,7 +175,7 @@ local function totals()
   if not parent or not parent:IsVisible() then return end
   if not summary then
     summary=parent:CreateFontString(nil,'OVERLAY','GameFontNormalSmall')
-    summary:SetPoint('TOPRIGHT',parent,'TOPRIGHT',-12,-4);summary:SetPoint('TOPLEFT',parent,'TOPLEFT',132,-4);summary:SetJustifyH('RIGHT');summary:SetWordWrap(false)
+    summary:SetPoint('BOTTOMLEFT',AuctionHouseFrame,'BOTTOMLEFT',181,7);summary:SetPoint('BOTTOMRIGHT',AuctionHouseFrame,'BOTTOMRIGHT',-178,7);summary:SetJustifyH('CENTER');summary:SetWordWrap(false)
     if summary.SetMaxLines then summary:SetMaxLines(2) end;ForeverMarketTextHint(parent,summary)
   end
   local l,i,c,unknown,sold,estimate=M.saleTotals()

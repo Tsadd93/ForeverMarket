@@ -32,7 +32,7 @@ Market Buy weighs recent sales, time to sale, expirations and older unresolved l
 
 ### Planning a session
 
-Use **Report** in Market Buy (or `/fm scanstatus`) for progress, first-deal time, rejection counts and up to three near misses. **Resume** continues an interrupted scan in the same session and venue. **Start** runs a new pass, including items screened out at an earlier budget. Verified offers compete for the fund as individual purchases and as several alternative baskets.
+Use **Scan tools → Scan report** in Market Buy (or `/fm scanstatus`) for progress, first-deal time, rejection counts and up to three near misses. **Resume** continues an interrupted scan in the same session and venue. **Find flips** runs a new pass, including items screened out at an earlier budget. Verified offers compete for the fund as individual purchases and as several alternative baskets.
 
 Click a Buy or Sell item name for a persistent item tooltip. Where available, it shows the observed ask, source and age, net proceeds, vendor price, and the current character's quantity-weighted sale price from paid invoices over the past 14 days. Receipts identify items by name. **Market Sell → Price** switches the default between matching bulk and undercutting. Item margin rules can already specify matching. Posting comparisons count sale notifications and report time to the first notification. These are observations of your own listings.
 
@@ -63,7 +63,7 @@ The starter reference covers 100 commodities on the sampled US Horde Forever mar
 
 **Bank and mail.** Open **Tools → Mail & bank** while at your personal bank or on a viewable guild bank tab with withdrawals available. Click **Withdraw** for the displayed quantity. Each transfer requires a free general bag slot. An explicit item route can also stage personal-bank stock for its assigned recipient. At the mailbox the same queue groups attachments by recipient and updates after bag and mail changes.
 
-**Continuous scanning.** Market Buy **Watch** repeats your favorites. **Radar** searches broadly among eligible items and alerts in chat when it verifies an affordable deal. **Stop** or closing the tab ends the scan. Radar alerts again when the price improves, more units qualify, or a qualifying offer returns. All purchases require a click.
+**Continuous scanning.** Under **Market Buy → Scan tools**, **Watch favorites** repeats your favorites. **Watch market** searches broadly among eligible items and alerts in chat when it verifies an affordable deal. **Stop** or closing the tab ends the scan. Radar alerts again when the price improves, more units qualify, or a qualifying offer returns. All purchases require a click.
 
 **Live comparison.** Open Market Buy, set the fund and target, and type `/fm benchmark` to check up to 50 eligible items once. Once a full sample is available, subsequent runs use the same IDs for the venue. `/fm benchlist` displays the names for copying into another shopping addon. `/fm watchreport` reports time to first deal, elapsed time, checked items and unanswered lookups for recent completed passes. Comparisons should use the same cash, price criteria and venue. Listings can change between runs.
 
