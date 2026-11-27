@@ -174,3 +174,11 @@ Desktop 0.10 stages full regional figures daily and linked realm prices every th
 To transfer prices without running Desktop on your game PC, use **Settings → Copy regional pack** on a Desktop with fresh prices. Paste into **/fm references → Import pack**. The addon checks region, age, row count and values before replacing the imported copy.
 
 In **/fm rules**, preview an item and click **Sources** for the inputs used. Regional and linked realm sources use public observations. Personal purchase and invoice averages use the character's recorded activity. A missing purchase, missing yield or insufficient history is shown as unavailable. TSM's older personal history and privately customized settings require an import or their original source. Set an operation with an item ID and source name at left, for example `2589:auctioningopnormal`, enter a price expression at right, and click **Apply formula**. Supported names include `auctioningopmin`, `auctioningopnormal`, `auctioningopmax`, `shoppingopmax`, and `sniperopmax`.
+
+## Working on the addon
+
+Edit the Lua modules in `src/`. The installed `Market.lua` is generated. Module order and embedded libraries are defined in `package.py`. Run `python package.py` from the repository root to produce the versioned ZIP in `dist/`. Run every file in `tests/` with Lua 5.1 from that same directory. The release workflow also parses the generated bundle before publishing.
+
+For scan changes, start in `Snapshot.lua` for shared auction replication, `Scan.lua` for the scan panel and browse fallback, and `BuyTab.lua` for buying decisions. For display names, use `ForeverMarketSetItemText` from `ItemNames.lua` when a label can contain an item placeholder. It handles delayed game data and recycled UI rows. Keep stored auction keys intact so equipment variants and pets retain their history.
+
+`MarketAnalysis.lua` combines local and regional reference prices for display. Pass the numeric item ID to `sharedReferences` for a single-item view. Omitting it builds and sorts the full report. Desktop-generated research and price feeds live in `Research.lua`, `DesktopRegion.lua` and `DesktopRealm.lua`. Preserve existing copies when updating an installed development build.
