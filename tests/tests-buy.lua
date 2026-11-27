@@ -491,6 +491,11 @@ do
   dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001);assert(observedRows[1].pick and observedRows[1].pick.v.starter)
   C_AuctionHouse.GetCommoditySearchResultInfo=function(_,i)return {unitPrice=190+i,quantity=1} end
   start:OnClick();update();dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001);assert(not observedRows[1].pick)
+  panel:OnHide();panel:OnShow();ForeverMarketBenchmark();update()
+  assert(ForeverMarketDB.lastBuyScan.benchSize==1 and ForeverMarketDB.lastBuyScan.benchIDs[1]==41001)
+  dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001);update()
+  for i=1,5 do elapsed=elapsed+1;panel:OnUpdate(1) end
+  assert(ForeverMarketDB.watchRuns[#ForeverMarketDB.watchRuns].mode=='Benchmark')
   ForeverMarketStarter.realmID=123;ordered={};start:OnClick();update();assert(#ordered==0)
   ForeverMarketStarter.realmID=6926;ForeverMarketStarter.at=time()-22*86400
   start:OnClick();update();assert(#ordered==0)

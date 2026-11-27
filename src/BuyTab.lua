@@ -82,6 +82,7 @@ end
 local investScan=false
 local watchScan=false
 local watchAgain=0
+local watchAlerts={}
 local itemConfirmation=false
 local scanWait
 local scanWake=false
@@ -291,6 +292,20 @@ local function rankCandidates(snapshot,grouped,cash)
     if room(lead.id,lead.maxStack)>0 then eligible[#eligible+1]=lead
     else report.stockSkipped=report.stockSkipped+1 end
   end
+  if watchScan=='bench' then
+    local key=GetRealmName()..'|'..UnitFactionGroup('player')
+    local sets=ForeverMarketDB.benchSets or {};ForeverMarketDB.benchSets=sets
+    local ids=sets[key]
+    if not ids then
+      table.sort(eligible,function(a,b)return a.id<b.id end);ids={}
+      for _,l in ipairs(eligible) do if l.id>0 then ids[#ids+1]=l.id;if #ids==50 then break end end end
+      if #ids==50 then sets[key]=ids end
+    end
+    local selected,byID={},{}
+    for _,l in ipairs(eligible) do byID[l.id]=l end
+    for _,id in ipairs(ids) do if byID[id] then selected[#selected+1]=byID[id] end end
+    eligible=selected;report.benchSize=#ids;report.benchIDs=ids
+  end
   leads=eligible;totalLeads=#leads
   local deferred={}
   local fresh=snapshot and GetTime()-snapshot.at<60
@@ -386,14 +401,14 @@ local function candidates(keepVerified,snapshot)
   screened,browseFallback=0,0
   rechecked={}
   junkCount,unknownCount,pendingFilter=0,0,nil
-  local grouped=not investScan and not watchScan and supportsBrowse()
+  local grouped=not investScan and (not watchScan or watchScan=='market') and supportsBrowse()
   if not keepVerified then verified={} end
   if ForeverMarketRepairHistory then report.merged=ForeverMarketRepairHistory() end
   if investScan and ForeverMarketSeedFloors then ForeverMarketSeedFloors() end
   local db=ForeverMarketHistory()
   checked,unanswered,totalLeads=0,0,0
   missingScan=not db or not next(db)
-  local seed=not investScan and not watchScan and ForeverMarketStarter
+  local seed=not investScan and (not watchScan or watchScan=='market' or watchScan=='bench') and ForeverMarketStarter
   local realmID=GetRealmID and GetRealmID()
   if not realmID or realmID==0 then realmID=tonumber((UnitGUID('player') or ''):match('^Player%-(%d+)%-')) end
   if seed and (seed.realmID~=realmID or seed.region~=GetCurrentRegion() or seed.faction~=UnitFactionGroup('player') or GetRealmName():find('Neutral AH',1,true) or time()<seed.at or time()-seed.at>21*86400) then seed=nil end
@@ -426,7 +441,7 @@ local function candidates(keepVerified,snapshot)
       if info and info.isCommodity then
         leads[#leads+1]={id=id,ref=model.exit/.9+3,model=model,scarceDays=0,affordable=true,potential=0,researchRank=0,rank=model.wins/model.trials}
       else report.thinHistory=report.thinHistory+1 end
-    elseif id and (not watchScan or ForeverMarketTools.favorite(id)) and type(r)=='table' and type(r.m)=='number' and r.m>0 and r.h then
+    elseif id and (not watchScan or watchScan=='market' or watchScan=='bench' or ForeverMarketTools.favorite(id)) and type(r)=='table' and type(r.m)=='number' and r.m>0 and r.h then
       local prices,recentPrices={},{}
       local scarceDays=0
       for day,hi in pairs(r.h) do
@@ -657,6 +672,11 @@ local function updateReport(state)
   report.unanswered=unanswered;report.detailRequests=requests;report.junk=junkCount
   report.batch=math.min(categoryIndex-1,#categories);report.batches=#categories
   report.item=search and search.id or nil;report.firstBuy=firstResult
+  if state=='complete' and watchScan then
+    local db=ForeverMarketDB;db.watchRuns=db.watchRuns or {}
+    table.insert(db.watchRuns,{at=time(),scope=GetRealmName(),mode=watchScan=='market' and 'Radar' or watchScan=='bench' and 'Benchmark' or 'Watch',size=report.benchSize,ids=report.benchIDs,hits=report.benchHits,elapsed=report.elapsed,first=firstResult,checked=checked,unanswered=unanswered,requests=requests})
+    if #db.watchRuns>20 then table.remove(db.watchRuns,1) end
+  end
   if state=='complete' or state=='stopped' or state=='closed' then report.finished=true end
 end
 local function render()
@@ -666,6 +686,11 @@ local function render()
   for _,p in ipairs(list) do
     local id=p.v.id
     active[id]=true
+    if watchScan=='bench' then report.benchHits=report.benchHits or {};report.benchHits[id]=true end
+    if watchScan and (not watchAlerts[id] or GetTime()-watchAlerts[id]>300) then
+      watchAlerts[id]=GetTime()
+      print('Forever Market deal: '..(C_Item.GetItemNameByID(p.v.itemID or id) or tostring(id))..' x '..p.n..' at '..ForeverMarketCoins(p.v.low)..' each.')
+    end
     for j=#(report and report.misses or {}),1,-1 do if report.misses[j].id==id then table.remove(report.misses,j) end end
     if not remembered[id] then displayOrder[#displayOrder+1]=id end
     remembered[id]={pick=p}
@@ -996,6 +1021,10 @@ local function create()
     if not waitingSince then candidates() end
     tick(true)
   end
+  function ForeverMarketBenchmark()
+    if not panel:IsVisible() or running or fund().pending or quote then print('Forever Market: open Market Buy and stop any current scan before benchmarking.');return end
+    investScan=false;watchScan='bench';watchAlerts={};start()
+  end
   local function control(text,x,fn)
     local b=CreateFrame('Button',nil,panel,'UIPanelButtonTemplate')
     b:SetSize(65,24);b:SetPoint('TOPLEFT',x,0);b:SetText(text);b:SetScript('OnClick',fn)
@@ -1027,7 +1056,11 @@ local function create()
     if not ForeverMarketTools or not ForeverMarketTools.favorite then return end
     investScan=false;watchScan=true;watchAgain=GetTime()+60;start()
   end)
-  wb:ClearAllPoints();wb:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-72,-32) end
+  wb:ClearAllPoints();wb:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-72,-32)
+  local radar=control('Radar',0,function()
+    investScan=false;watchScan='market';watchAlerts={};watchAgain=GetTime()+60;start()
+  end)
+  radar:ClearAllPoints();radar:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-55) end
   if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-215,-37) end
   scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-108);scroll:SetPoint('BOTTOMRIGHT',-26,4)
   content=CreateFrame('Frame',nil,scroll);content:SetSize(678,1);scroll:SetScrollChild(content)
@@ -1054,7 +1087,7 @@ local function create()
     local refreshUI=uiElapsed>=.5
     if refreshUI then uiElapsed=0 end
     resume:SetShown(pausedMarket~=nil);startButton:SetEnabled(not running);stopButton:SetEnabled(running or watchScan)
-    if watchScan and completed and not running and not fund().pending and not quote and GetTime()>=watchAgain then watchAgain=GetTime()+60;start();return end
+    if watchScan and watchScan~='bench' and completed and not running and not fund().pending and not quote and GetTime()>=watchAgain then watchAgain=GetTime()+60;start();return end
     if running then tick(refreshUI) elseif refreshUI then
       if quote and GetTime()-quote.at>9 then clearQuote() end
       render()

@@ -166,6 +166,29 @@ SlashCmdList.FOREVERMARKET=function(msg)
   elseif msg=='farm' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Farming')
   elseif msg=='scan' and ForeverMarketScan then ForeverMarketScan()
   elseif msg=='' or msg=='export' then export(false)
+  elseif msg=='benchmark' then
+    if ForeverMarketBenchmark then ForeverMarketBenchmark() else print('Open Market Buy to run the live benchmark.') end
+  elseif msg=='benchlist' and ForeverMarketTools.openTools then
+    local sets=ForeverMarketDB and ForeverMarketDB.benchSets or {}
+    local ids=sets[ForeverMarketVenueRealm()..'|'..UnitFactionGroup('player')]
+    if ids then
+      local terms={}
+      for _,id in ipairs(ids) do local name=C_Item.GetItemNameByID(id)
+        if not name then print('Item names are still loading. Try again.');return end
+        terms[#terms+1]='"'..name..'"'
+      end
+      ForeverMarketTools.openTools('Import',table.concat(terms,'\n'))
+    else print('Run /fm benchmark with 50 eligible items first.') end
+  elseif msg=='watchreport' then
+    local runs=ForeverMarketDB and ForeverMarketDB.watchRuns or {}
+    if #runs==0 then print('Forever Market: no completed Watch or Radar passes yet.') end
+    for i=math.max(1,#runs-4),#runs do local r=runs[i]
+      print(('%s / %s / %ds / first deal %s / %d checked / %d unanswered'):format(r.mode,r.scope,r.elapsed,r.first and ('%.1fs'):format(r.first) or 'none',r.checked,r.unanswered))
+      if r.mode=='Benchmark' then
+        local found=0;for _ in pairs(r.hits or {}) do found=found+1 end
+        print(('Sample %d / verified deal IDs %d / %d detail requests'):format(r.size or 0,found,r.requests or 0))
+      end
+    end
   elseif msg=='scanstatus' then
     local r=ForeverMarketDB and ForeverMarketDB.lastBuyScan
     if not r then print('Forever Market: no Buy scan recorded yet.');return end

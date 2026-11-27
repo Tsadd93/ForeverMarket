@@ -93,6 +93,52 @@ local function widget()
  end})
 end
 CreateFrame=widget;M.cancelMaterial=function()end
+dofile('src/MarketDesk.lua')
+local advanced=M.importPreview('ore^^^^^^^^0.001^0.002^2^^^4','OreSearch')
+assert(#advanced.filters==1 and advanced.filters[1].minPrice==10 and advanced.filters[1].max==20)
+M.applyPreview(advanced)
+local snap={books={}};AuctionHouseFrame={IsShown=function()return true end}
+ForeverMarketSnapshot=function()return snap end;ForeverMarketReadySnapshot=ForeverMarketSnapshot
+M.findOffers=function(rule)return {{id=10}} end
+M.runBasket();M.stepBasket();M.stepBasket()
+assert(M.tripTargets()[10].keep==4 and M.tripTargets()[10].cap==20)
+M.restockList()[10]={keep=7,cap=11}
+assert(M.tripTargets()[10].keep==7 and M.tripTargets()[10].cap==11)
+M.removeBasketFilter(1);M.restockList()[10]=nil
+local current={reserve=2,postCap=4,craftPct=0,realmPct=80}
+M.group=function()return current end
+C_AuctionHouse.GetNumOwnedAuctions=function()return 1 end
+C_AuctionHouse.GetOwnedAuctionInfo=function()return {itemKey={itemID=10},quantity=2,status=0}end
+assert(M.policyFloor(10,true)==8 and M.checkPostPolicy(10,1,7,true):find('floor'))
+assert(M.checkPostPolicy(10,3,20,true):find('reserve'))
+current.reserve=0
+assert(M.checkPostPolicy(10,3,20,true):find('cap') and not M.checkPostPolicy(10,2,20,true))
+current.craftPct=120
+assert(M.checkPostPolicy(10,1,20,true):find('recipe'))
+M.clearRoute(10);M.bankOpen=true
+M.restockList()[10]={keep=6,cap=0}
+local oldSlots,oldInfo=C_Container.GetContainerNumSlots,C_Container.GetContainerItemInfo
+C_Container.GetContainerNumSlots=function(b)return b==-1 and 1 or b==0 and 3 or 0 end
+C_Container.GetContainerItemInfo=function(b,s)
+  if b==-1 then return {itemID=10,stackCount=12} elseif s<3 then return oldInfo(b,s) end
+end
+C_Container.GetContainerNumFreeSlots=function()return 1,0 end
+local cursor=false
+CursorHasItem=function()return cursor end
+C_Container.SplitContainerItem=function(b,s,n)assert(b==-1 and n==2);cursor=true end
+C_Container.PickupContainerItem=function(b,s)assert(b==0 and s==3);cursor=false;inv[10]=6 end
+local queue=M.bankQueue();assert(queue[1].n==2 and M.withdraw(queue[1]):find('requested') and #M.bankQueue()==0)
+M.setRoute(10,'Smith',3);assert(M.bankQueue()[1].label:find('Smith'))
+M.bankOpen=false;M.guildOpen=true;inv[10]=4
+GetCurrentGuildBankTab=function()return 2 end
+GetGuildBankTabInfo=function()return 'Guild tab',nil,true,true,5,0 end
+GetGuildBankItemLink=function(_,s)if s==1 then return 'item:10' end end
+GetGuildBankItemInfo=function()return nil,12,false end
+assert(#M.bankQueue()==0)
+GetGuildBankTabInfo=function()return 'Guild tab',nil,true,true,5,3 end
+assert(M.bankQueue()[1].n==2 and M.bankQueue()[1].guild)
+M.guildOpen=false;C_Container.GetContainerNumSlots=oldSlots;C_Container.GetContainerItemInfo=oldInfo
+print('PASS: shopping filter migration, exact targets, posting floors, caps, personal and guild logistics')
 dofile('src/ToolsWindow.lua')
 for _,tab in ipairs({'Basket','Mail & bank','Supply plan','History','Farming','Import'}) do M.openTools(tab,10) end
 print('PASS: standalone window renders all six tabs including chart and paid invoices')

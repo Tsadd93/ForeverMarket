@@ -64,10 +64,13 @@ local function basket()
     if not id or id<1 or not n or n>9999 then return 'Enter item ID and quantity (0 removes).' end
     local list=M.restockList();list[id]=n>0 and {keep=n,cap=list[id] and list[id].cap or 0} or nil;M.cancelMaterial();M.invalidate()
   end)
-  action(3,'Check prices',function() if ForeverMarketSnapshot then ForeverMarketSnapshot() end;return 'Requested market snapshot.' end)
+  action(3,'Run shopping list',function() if M.runBasket then return M.runBasket() end end)
   action(4,'Vendor deals',function() if AuctionHouseFrame and AuctionHouseFrame:IsShown() then f:Hide();M.openVendorDeals() else return 'Open the auction house.' end end)
   local trip,total,unknown=M.shoppingTrip()
   summary:SetText(m.active..' / '..coins(total)..(unknown>0 and (' priced subtotal / '..unknown..' incomplete') or ' total for missing quantities'))
+  for i,rule in ipairs(M.basketFilters and M.basketFilters() or {}) do
+    add('Search: '..(rule.term~='' and rule.term or rule.category or 'All items'),'Target '..rule.units..' each / max '..(rule.max>0 and coins(rule.max) or 'any price'),'Remove',function()return M.removeBasketFilter(i)end)
+  end
   for _,r in ipairs(trip) do
     local q=M.quote;local active=q and q.trip and q.id==r.id
     local displayed=active and q.total
@@ -93,6 +96,7 @@ local function imports()
   end)
   if preview then
     summary:SetText(preview.kind..' into '..preview.list..' / '..#preview.skipped..' skipped')
+    for _,r in ipairs(preview.filters or {}) do add('Search: '..r.term,'Qty '..r.units..' each / maximum '..coins(r.max)) end
     for id,n in pairs(preview.items) do add(itemName(id),'Keep '..n) end
     for _,s in ipairs(preview.skipped) do add('Skipped',s) end
   else summary:SetText('Supports item-only TSM groups and Auctionator exact item names or IDs.') end
@@ -114,9 +118,14 @@ local function logistics()
   local seller=M.routeSeller()
   summary:SetText('Default seller: '..(seller or 'none')..' / attach at mailbox, inspect draft, then Send.')
   for _,r in ipairs(M.shipments()) do add(itemName(r.id),r.n..' to '..r.to,'Attach',function()return M.attachShipment(r) end) end
+  if M.bankQueue then
+    for _,r in ipairs(M.bankQueue()) do
+      add(itemName(r.id),r.label..' / '..r.n,'Withdraw',function()return M.withdraw(r)end)
+    end
+  end
   for id,n in pairs(M.materials()) do
     local need=math.max(0,n-M.bagCount(id))
-    for _,s in ipairs(M.sources(id)) do if need>0 and s.own and s.place=='bank' then add(itemName(id),'Withdraw '..math.min(s.n,need)..' from bank');break end end
+    for _,s in ipairs(M.sources(id)) do if not M.bankOpen and not M.guildOpen and need>0 and s.own and s.place=='bank' then add(itemName(id),'Withdraw '..math.min(s.n,need)..' from bank');break end end
   end
   for id,n in pairs(M.protectedStock()) do add(itemName(id),'Keep '..n..' in bags') end
 end
@@ -179,6 +188,7 @@ local function selectTab(tab,value)
   if tab=='Import' then second:SetText('Imported') end
   field:SetMultiLine(tab=='Import');field:ClearFocus();second:ClearFocus()
   message:SetText('');refresh()
+  if tab=='Import' and value then field:SetFocus();field:HighlightText() end
 end
 function M.openTools(tab,value)
   if not f then
@@ -199,7 +209,9 @@ function M.openTools(tab,value)
     f:SetScript('OnHide',function()if M.quote and M.quote.trip then M.cancelMaterial() end end)
     local t=0
     f:SetScript('OnUpdate',function(_,dt)
+      if mode=='Basket' and M.stepBasket then M.stepBasket() end
       t=t+dt;if t<.4 then return end;t=0
+      if mode=='Mail & bank' and M.logisticsDirty then M.logisticsDirty=false;refresh() end
       local q=M.quote;local key=q and q.trip and (q.total or 'pending')
       if mode=='Basket' and (key~=lastQuote or M.tripDirty) then lastQuote=key;M.tripDirty=nil;refresh() end
     end)

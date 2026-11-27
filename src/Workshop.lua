@@ -193,7 +193,7 @@ local function itemValues(tip,id,link,n,bound,k,variant)
     line(n and 'Post at' or 'AH estimate',post)
     tip:AddDoubleLine('After AH cut',money(ForeverMarketSaleNet(post))..(n and ('   /   '..money(ForeverMarketSaleNet(post*n))) or ''))
     tip:AddLine(source..'  |  '..math.floor((time()-at)/60)..' min ago',.7,.8,.8)
-  else tip:AddLine(bound and 'Bound' or 'AH price unknown',.75,.75,.75) end
+  else tip:AddLine(bound and 'Bound' or 'No auction price recorded for this item. Scan at the auction house.',.75,.75,.75,true) end
   if vendor then line('Vendor',vendor) end
   if (M.materials()[id] or 0)>0 then tip:AddLine('Reserved for crafting',1,.8,.2) end
   if M.valueLines then M.valueLines(tip,id,link) end

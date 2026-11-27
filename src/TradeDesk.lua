@@ -126,12 +126,21 @@ function M.findOffers(filter,snap,results,startKey,batch)
   for id,b in next,snap and snap.books or {},startKey do
     local price=b.low
     if price and (not exact or id==exact) and (filter.max==0 or price<=filter.max) and (not filter.watch or M.favorite(id)) then
-      local name,_,quality,_,req,kind,sub,_,equip,_,vendor=C_Item.GetItemInfo(id)
+      local name,_,quality,ilvl,req,kind,sub,_,equip,_,vendor,classID,subClassID=C_Item.GetItemInfo(id)
+      local categoryMatch=not filter.categories
+      for _,f in ipairs(filter.categories or {}) do
+        if classID==f.classID and (not f.subClassID or subClassID==f.subClassID) and (not f.inventoryType or C_Item.GetItemInventoryTypeByID(id)==f.inventoryType) then categoryMatch=true;break end
+      end
       local slot=equip and _G[equip] or ''
       local text=((name or '')..' '..(kind or '')..' '..(sub or '')..' '..(slot or '')):lower()
       local matches=true
       for word in term:gmatch('%S+') do if not text:find(word,1,true) then matches=false;break end end
-      if (not filter.usable or equip and equip~="" and C_Item.IsEquippableItem and C_Item.IsEquippableItem(id) and C_Item.IsUsableItem and C_Item.IsUsableItem(id)) and (exact or matches) and (not filter.level or (req and req<=filter.level))
+      if categoryMatch and (not filter.exactName or name and name:lower()==term)
+        and (not filter.minLevel or req and req>=filter.minLevel)
+        and (not filter.minItemLevel or ilvl and ilvl>=filter.minItemLevel)
+        and (not filter.maxItemLevel or ilvl and ilvl<=filter.maxItemLevel)
+        and (not filter.minPrice or price>=filter.minPrice)
+        and (not filter.usable or equip and equip~="" and C_Item.IsEquippableItem and C_Item.IsEquippableItem(id) and C_Item.IsUsableItem and C_Item.IsUsableItem(id)) and (exact or matches) and (not filter.level or (req and req<=filter.level))
         and (not filter.quality or quality==filter.quality) and (not filter.vendor or vendor and vendor>price) then
         results[#results+1]={id=id,name=name or ('Item '..id),price=price,qty=b.lowQty,vendor=vendor}
       end
@@ -152,12 +161,24 @@ function M.explain(tip,id,reason)
   end
   local avg=M.history(tostring(id));if avg then tip:AddLine('Average daily low: '..ForeverMarketCoins(avg)) end
   local name=C_Item.GetItemNameByID(id)
+  if name and M.marketOutcomes then
+    local sale=M.marketOutcomes(name)
+    tip:AddLine(sale and sale.lastUnit and ('Last paid / unit '..ForeverMarketCoins(sale.lastUnit)..' / '..date('%b %d %H:%M',sale.lastPaid)) or 'No paid sale recorded here in 14 days.')
+  end
   if name and M.saleLabel then tip:AddLine(M.saleLabel(name)) end
   for _,s in ipairs(M.sources(id)) do tip:AddLine(s.who..' / '..s.place..': '..s.n..' ('..date('%b %d %H:%M',s.at)..')') end
 end
 -- Item groups carry the same trading and posting policy across all members.
 local function integer(n,max) return n and n>=0 and n<=max and n==math.floor(n) end
 function M.applyGroup(spec)
+  local craftPct,realmPct,reserve,postCap=0,0,0,0
+  if spec:sub(1,5)=='FMG2;' then
+    local base,c,r,k,p=spec:match('^FMG2;([^;]+;%d+;%d+;%d+;%d+;%d+;[123]);(%d+);(%d+);(%d+);(%d+)$')
+    if not base then return end
+    craftPct,realmPct,reserve,postCap=tonumber(c),tonumber(r),tonumber(k),tonumber(p)
+    if not integer(craftPct,1000) or not integer(realmPct,1000) or not integer(reserve,9999) or not integer(postCap,9999) then return end
+    spec='FMG1;'..base
+  end
   local ids,keep,cap,margin,maxStock,size,duration=spec:match('^FMG1;([%d,]+);(%d+);(%d+);(%d+);(%d+);(%d+);([123])$')
   if not ids or #ids>8000 then return end
   keep,cap,margin,maxStock,size,duration=tonumber(keep),tonumber(cap),tonumber(margin),tonumber(maxStock),tonumber(size),tonumber(duration)
@@ -168,7 +189,7 @@ function M.applyGroup(spec)
     checked[id]=true
   end
   for id in pairs(checked) do
-    prefs().groups[id]={margin=margin,stock=maxStock,cap=cap}
+    prefs().groups[id]={margin=margin,stock=maxStock,cap=cap,craftPct=craftPct,realmPct=realmPct,reserve=reserve,postCap=postCap}
     M.setPosting(id,size>0 and size or nil,duration)
     if keep>0 then M.restockList()[id]={keep=keep,cap=cap} else M.restockList()[id]=nil end
     prefs().favorites[id]=true
@@ -229,6 +250,9 @@ function M.openDesk()
     fields.qty:SetText('1')
     fields.qty:SetScript('OnTextChanged',function(_,user)
       if user and M.quote and M.quote.direct then M.cancelMaterial();showResults();status:SetText('Quantity changed. Get a new quote.') end
+    end)
+    button(panel,253,-318,146,'Add filter to basket',function()
+      search();if current and M.addBasketFilter then status:SetText(M.addBasketFilter(current,tonumber(fields.qty:GetText()))) end
     end)
     button(panel,430,-24,68,'Search',search)
     button(panel,502,-24,82,'Save search',function()
@@ -313,10 +337,11 @@ function M.openGroups()
       label(p,x,y,w,title);local e=CreateFrame('EditBox',nil,p,'InputBoxTemplate')
       e:SetSize(w,21);e:SetPoint('TOPLEFT',x,y-20);e:SetAutoFocus(false);e:SetText(default);return e
     end
-    local ids=field(16,-20,475,'Item IDs separated by commas','')
+    local ids=field(16,-20,350,'Item IDs separated by commas','')
     local keep=field(16,-82,90,'Restock to','0');local cap=field(116,-82,110,'Max buy each','0')
     local margin=field(248,-82,96,'Min profit %','5');local stock=field(359,-82,100,'Stock cap','20')
     local size=field(16,-145,96,'Post quantity','0');local dur=field(126,-145,95,'Hours','12')
+    local policy=field(387,-20,230,'Craft % / realm % / keep / listed cap','0/0/0/0')
     local presets={{'Leveling cloth','2589,2592,4306,4338,14047'},{'Classic raid supplies','13444,13446,13457,13452'}}
     local groupName=field(458,-82,145,'Group name','My group')
     local preset=0
@@ -327,7 +352,9 @@ function M.openGroups()
     button(p,446,-161,146,'Load named group',function()
       local saved=prefs().savedGroups and prefs().savedGroups[groupName:GetText()]
       if not saved then msg:SetText('No saved group with that name.');return end
-      local a,b,c,d,e,f,g=saved:match('^FMG1;([^;]+);(%d+);(%d+);(%d+);(%d+);(%d+);([123])$')
+      local base,settings=saved:match('^FMG2;([^;]+;%d+;%d+;%d+;%d+;%d+;[123]);(.+)$')
+      policy:SetText(settings and settings:gsub(';','/') or '0/0/0/0')
+      local a,b,c,d,e,f,g=(base and ('FMG1;'..base) or saved):match('^FMG1;([^;]+);(%d+);(%d+);(%d+);(%d+);(%d+);([123])$')
       if not a then return end
       ids:SetText(a);keep:SetText(b);cap:SetText(c..'c');margin:SetText(d);stock:SetText(e);size:SetText(f);dur:SetText(({12,24,48})[tonumber(g)]);code:SetText(saved)
       msg:SetText('Loaded. Edit and apply to update these items.')
@@ -340,6 +367,9 @@ function M.openGroups()
       local hours=({['12']=1,['24']=2,['48']=3})[dur:GetText()];local price=M.goldInput(cap:GetText())
       if not price or not hours then msg:SetText('Enter 12, 24, or 48 hours and a valid price.');return end
       local spec=table.concat({'FMG1',ids:GetText():gsub('%s',''),keep:GetText(),price,margin:GetText(),stock:GetText(),size:GetText(),hours},';')
+      local c,r,k,p=policy:GetText():match('^%s*(%d+)%s*/%s*(%d+)%s*/%s*(%d+)%s*/%s*(%d+)%s*$')
+      if not c then msg:SetText('Enter four whole numbers separated by /.');return end
+      spec='FMG2;'..spec:sub(6)..';'..table.concat({c,r,k,p},';')
       if not M.applyGroup(spec) then msg:SetText('Check the item IDs and whole-number limits.');return end
       remember(spec);code:SetText(spec);code:SetFocus();code:HighlightText();msg:SetText('Applied. Copy selected text to share this group.')
     end)

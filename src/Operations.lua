@@ -9,7 +9,7 @@ local function activeAH() return AuctionHouseFrame and AuctionHouseFrame:IsShown
 function M.shoppingTrip()
   local rows,total,unknown={},0,0
   local a=M.account()
-  for id,r in pairs(M.restockList()) do
+  for id,r in pairs(M.tripTargets and M.tripTargets() or M.restockList()) do
     local bank,mail=0,0
     for _,s in ipairs(M.sources(id)) do
       if s.own and time()-s.at<7*86400 then
@@ -42,7 +42,7 @@ function M.buyTrip(id)
   for _,r in ipairs(M.shoppingTrip()) do if r.id==id then
     local q=M.quote
     if q and q.trip and q.id==id and q.total then
-      if q.n>r.n then M.cancelMaterial();return 'Stock changed. Refresh the quote.' end
+      if q.n>r.n or not r.subtotal or q.total>r.subtotal then M.cancelMaterial();return 'Stock or price changed. Refresh the quote.' end
       local ok,why=M.confirmMaterial();return why or (ok and 'Purchase submitted.')
     end
     if r.n==0 or not r.subtotal then return 'No uncovered quantity with a price.' end
@@ -60,7 +60,7 @@ function M.readAuctionatorList(list)
   return table.concat(items,'\n')
 end
 function M.importPreview(raw,destination)
-  local p={list=destination,items={},skipped={},kind='Auctionator'}
+  local p={list=destination,items={},filters={},skipped={},kind='Auctionator'}
   if raw:find('i:%d') then p.kind='TSM' end
   if #raw>32000 then p.skipped[1]='Input exceeds 32000 characters';return p end
   local function parse(s)
@@ -71,7 +71,25 @@ function M.importPreview(raw,destination)
     else
       local fields={};for part in (s..'^'):gmatch('(.-)%^') do fields[#fields+1]=part end
       local label=fields[1]
-      for i=2,#fields do if i~=14 and fields[i]~='' then p.skipped[#p.skipped+1]=s;return end end
+      local advanced=false
+      for i=2,#fields do if i~=14 and fields[i]~='' then advanced=true end end
+      if advanced then
+        local rule={term=label:gsub('^"(.*)"$','%1'),exactName=label:match('^".*"$')~=nil,max=0,units=1}
+        local keys={[3]='minItemLevel',[4]='maxItemLevel',[5]='minLevel',[6]='level',[9]='minPrice',[10]='max',[11]='quality',[14]='units'}
+        for i=2,#fields do
+          if i==2 and fields[i]~='' then
+            rule.categories=M.categoryFilters and M.categoryFilters(fields[i])
+            if not rule.categories then p.skipped[#p.skipped+1]=s;return end
+            rule.category=fields[i]
+          elseif fields[i]~='' then
+            local n=tonumber(fields[i]);local key=keys[i]
+            if not key or not n or n<0 or n>1e7 or (i~=9 and i~=10 and n~=math.floor(n)) or (i==14 and n>9999) then p.skipped[#p.skipped+1]=s;return end
+            if i==9 or i==10 then n=math.floor(n*10000+.5) end
+            if n>0 or i==11 then rule[key]=n end
+          end
+        end
+        p.filters[#p.filters+1]=rule;return
+      end
       n=tonumber(fields[14]);if fields[14] and fields[14]~='' and not n then p.skipped[#p.skipped+1]=s;return end
       local base,q=label:match('^(.-)%s+[xX](%d+)$');if base then label=base;n=tonumber(q) end
       label=label:gsub('^"(.*)"$','%1')
@@ -86,10 +104,13 @@ function M.importPreview(raw,destination)
   return p
 end
 function M.applyPreview(p)
-  if not p or not next(p.items) or not p.list or p.list=='' or #p.list>48 then return 'Choose a destination and preview recognized items.' end
+  if not p or (not next(p.items) and #(p.filters or {})==0) or not p.list or p.list=='' or #p.list>48 then return 'Choose a destination and preview recognized items.' end
   M.restockList()
   local m=M.account().manager
+  local existing=M.account().filtersByList
+  if #(p.filters or {})+#(existing and existing[p.list] or {})>30 then return 'Too many filters for this basket (maximum 30).' end
   local list=m.lists[p.list] or {};m.lists[p.list]=list;m.active=p.list
+  for _,rule in ipairs(p.filters or {}) do M.addBasketFilter(rule,rule.units) end
   for id,n in pairs(p.items) do
     if not list[id] then list[id]={keep=n,cap=0} else list[id].keep=math.max(list[id].keep,n) end
   end
@@ -165,14 +186,24 @@ function M.shipments()
         local id=item.itemID;local r=ops.routes[id];local to=r and r.to or ops.seller
         local _,_,_,_,_,_,_,_,_,_,_,_,_,bind=C_Item.GetItemInfo(item.hyperlink or id)
         if to and to~=recipient(M.account()) and to~=UnitName('player') and bind~=nil and bind~=4 and bind~=1 then
-          local keep=math.max(r and r.keep or 0,needs[id] or 0)
+          local g=M.group and M.group(id)
+          local keep=math.max(r and r.keep or 0,needs[id] or 0,g and g.reserve or 0)
           local n=math.min(item.stackCount or 1,math.max(0,M.bagCount(id)-keep))
           if n>0 then out[#out+1]={id=id,to=to,n=n,bag=bag,slot=slot,stack=item.stackCount or 1,link=item.hyperlink};needs[id]=keep+n end
         end
       end
     end
   end
+  table.sort(out,function(a,b)
+    if a.to~=b.to then return a.to<b.to end
+    if a.bag~=b.bag then return a.bag<b.bag end
+    return a.slot<b.slot
+  end)
   return out
+end
+function M.bankDispatchTo(id)
+  local route=realmOps().routes[id]
+  if route and not protected(id) and route.to~=recipient(M.account()) and route.to~=UnitName('player') then return route.to end
 end
 function M.destinations()
   local list={}

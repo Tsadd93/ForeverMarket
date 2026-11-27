@@ -99,7 +99,9 @@ function M.marketOutcomes(name)
         turnover.byName[key]=r
         if e.kind=='proceeds_collected' and e.amount and e.deposit and e.fee and (e.quantity or 0)>0 and e.character==UnitName('player') then
           r.paidUnits=(r.paidUnits or 0)+e.quantity;r.receipts=(r.receipts or 0)+1
-          r.gross=(r.gross or 0)+e.amount+e.fee-e.deposit;r.lastPaid=e.at
+          local gross=e.amount+e.fee-e.deposit
+          r.gross=(r.gross or 0)+gross
+          if not r.lastPaid or e.at>=r.lastPaid then r.lastPaid=e.at;r.lastUnit=math.floor(gross/e.quantity) end
         elseif e.kind=='posted' and id and not post then
           local mature=now-e.at>=12*3600
           turnover.posts[id]={name=key,at=e.at,mature=mature}
@@ -240,6 +242,10 @@ function M.valueLines(tip,id,link)
   if name then
     tip:AddLine(M.saleLabel(name),.75,.8,.85)
     local evidence=M.marketOutcomes(name)
+    if evidence and evidence.lastUnit then
+      tip:AddDoubleLine('Last paid sale / unit',ForeverMarketCoins(evidence.lastUnit))
+      tip:AddLine(date('%b %d %H:%M',evidence.lastPaid)..' / this character, by item name',.75,.8,.85)
+    else tip:AddLine('No paid sale recorded for this character in 14 days.',.75,.8,.85) end
     if evidence and evidence.paidUnits then
       tip:AddDoubleLine('Your sale price / unit',ForeverMarketCoins(math.floor(evidence.gross/evidence.paidUnits)))
       tip:AddLine(('%d paid invoices / %d units / latest %s (item name)'):format(evidence.receipts,evidence.paidUnits,date('%b %d',evidence.lastPaid)),.75,.8,.85)

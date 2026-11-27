@@ -125,13 +125,21 @@ local function historicalQuote(s, timedOut)
   end
   return q
 end
-local function price(q,s)
+local function basePrice(q,s)
   if q.floorPrice then
     if ForeverMarketDB and ForeverMarketDB.matchBulk then return q.floorPrice end
     if s and ForeverMarketTools and ForeverMarketTools.rule and ForeverMarketTools.rule(s.k.itemID)=='Margin' then return q.floorPrice end
     return ForeverMarketPostPrice(q.floorPrice)
   end
   if not q.timedOut then return q.average end
+end
+local function price(q,s)
+  local p=basePrice(q,s)
+  if p and s and ForeverMarketTools and ForeverMarketTools.policyFloor then
+    local floor=ForeverMarketTools.policyFloor(s.k.itemID)
+    if floor then return math.max(p,floor) end
+  end
+  return p
 end
 local function quoteDetail(q)
   if q.floorPrice then return ForeverMarketCoins(q.floorPrice)..' x '..q.floorQty end
@@ -144,6 +152,10 @@ local function postingLimit(s,unitPrice,recheck)
   local qty=quantity(s)
   if not qty then return 'Enter 1 to '..s.count end
   if ForeverMarketTools then
+    if ForeverMarketTools.checkPostPolicy then
+      local reason=ForeverMarketTools.checkPostPolicy(s.k.itemID,qty,unitPrice,recheck)
+      if reason then return reason end
+    end
     if ForeverMarketTools.rule and ForeverMarketTools.rule(s.k.itemID)=='Keep' then return 'Keep for profession' end
     local need=ForeverMarketTools.materials()[s.k.itemID] or 0
     if need>0 and ForeverMarketTools.bagCount(s.k.itemID)-qty<need then
@@ -267,7 +279,7 @@ local function paint()
     row.needsCheck=s and (not fresh(q) or q.timedOut)
     row.post:SetText(row.needsCheck and 'Check' or row.override and (nativeFallback and 'Sell…' or 'Post held') or nativeFallback and 'Sell…' or 'Post')
     row.post:SetEnabled((not row.hold or row.override) and not pending and s and not s.locked and (row.needsCheck or q and price(q,s)~=nil) or false)
-    row.quote=q
+    row.quote=q;row.reviewedUnit=s and q and price(q,s)
   end
 end
 local function post(row)
@@ -281,6 +293,7 @@ local function post(row)
   local qty=quantity(s)
   if not qty then return end
   local p=price(q,s)
+  if p~=row.reviewedUnit then paint();caption:SetText('Posting price changed. Review the refreshed row.');return end
   local limit,canOverride=postingLimit(s,p,true)
   if limit and not (allowHeld and row.override and canOverride and q.floorPrice) then bags();paint();caption:SetText(limit);return end
   if ForeverMarketTools and q.floorPrice then

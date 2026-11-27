@@ -53,6 +53,20 @@ Open **Tools** from the manager or type `/fm tools`.
 
 The starter reference covers 100 commodities on the sampled US Horde Forever market. It expires after 21 days. Other markets can use local scans and live vendor deals. In the manager, review undercuts alongside competing quantity, deposit cost and recent sales before deciding whether to relist.
 
+## Mixed shopping lists, posting rules and deal alerts
+
+**First-session pricing.** On the sampled US Horde market, tooltips can use 2,950 additional dated base-item references while you build local history. These are display estimates. Starter buy candidates still use the narrower commodity sample and live confirmation. A paid sale shows the gross unit price on your latest qualifying invoice in the last 14 days, identified by character, market and item name. Variants can share an invoice name.
+
+**Shopping.** In Browse, enter a category or search term, price limit, quality and target quantity. Click **Add filter to basket**. In **Tools → Basket**, choose **Run shopping list**. Exact item targets take precedence when rules overlap. Each filter applies its quantity to each matching item. The importer accepts Auctionator level, item-level, price, quality and quantity filters and category paths recognized by the client. Review skipped fields in the preview.
+
+**Posting.** In **Browse → Trade groups**, enter four whole numbers in **Craft % / realm % / keep / listed cap**. For example, `120/80/4/10` floors your unit price at the higher of 120% of known material cost and 80% of recent realm bulk asks, keeps four units in bags and allows up to ten units listed. Zero disables that individual rule. Missing prices hold the item. **Apply & copy** creates a shareable Forever Market group. Existing FMG1 groups still work.
+
+**Bank and mail.** Open **Tools → Mail & bank** while at your personal bank or on a viewable guild bank tab with withdrawals available. Click **Withdraw** for the displayed quantity. Each transfer requires a free general bag slot. An explicit item route can also stage personal-bank stock for its assigned recipient. At the mailbox the same queue groups attachments by recipient and updates after bag and mail changes.
+
+**Continuous scanning.** Market Buy **Watch** repeats your favorites. **Radar** searches broadly among eligible items and alerts in chat when it verifies an affordable deal. **Stop** or closing the tab ends the scan. Repeated alerts for the same item have a five-minute cooldown. All purchases require a click.
+
+**Live comparison.** Open Market Buy, set the fund and target, and type `/fm benchmark` to check up to 50 eligible items once. Once a full sample is available, subsequent runs use the same IDs for the venue. `/fm benchlist` displays the names for copying into another shopping addon. `/fm watchreport` reports time to first deal, elapsed time, checked items and unanswered lookups for recent completed passes. Comparisons should use the same cash, price criteria and venue. Listings can change between runs.
+
 ## Optional Windows dashboard
 
 [Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.

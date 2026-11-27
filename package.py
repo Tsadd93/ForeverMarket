@@ -4,7 +4,7 @@ from zipfile import ZipFile, ZIP_DEFLATED, ZipInfo
 root = Path(__file__).resolve().parent
 toc = (root / "ForeverMarket.toc").read_bytes()
 version = next(s.split(": ", 1)[1] for s in toc.decode().splitlines() if s.startswith("## Version:"))
-modules = "Starter History Market Valuation Crafting Activity Snapshot Scan Bags SellTab BuyTab Workshop Manager TradeDesk Operations ToolsWindow Version".split()
+modules = "Starter History Market Valuation Crafting Activity Snapshot Scan Bags SellTab BuyTab Workshop Manager TradeDesk Operations MarketDesk ToolsWindow Version".split()
 sections = []
 for name in modules:
     file = name + ".lua"

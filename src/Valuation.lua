@@ -96,6 +96,16 @@ function M.prices(id,key,variant)
     return match and q.price or ForeverMarketPostPrice(q.price),q.at,(variant and 'Exact variant / ' or '')..(time()-q.at<60 and 'Live check' or 'Last scan'),q.price
   end
   local avg,at=M.history(key or tostring(id))
+  if not avg and not variant and (not key or key==tostring(id)) then
+    local s=ForeverMarketStarter
+    local realm=GetRealmID and GetRealmID()
+    if not realm or realm==0 then realm=tonumber((UnitGUID('player') or ''):match('^Player%-(%d+)%-')) end
+    local reference=s and s.reference and s.reference[id]
+    local stamped=s and (reference and s.referenceAt or s.at)
+    if s and (reference or s.items[id]) and realm==s.realmID and GetCurrentRegion()==s.region and UnitFactionGroup('player')==s.faction and not GetRealmName():find('Neutral AH',1,true) and time()>=stamped and time()-stamped<=21*86400 then
+      return reference or s.items[id],stamped,'Starter reference / historical estimate'
+    end
+  end
   return avg,at,variant and 'Base item / historical estimate' or 'Historical estimate'
 end
 function M.bagCount(id)
