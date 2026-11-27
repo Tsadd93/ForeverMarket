@@ -10,6 +10,10 @@ Select **WoW Forever**, open **Get Addons → Install from URL**, and paste **ht
 
 Open **My Addons** in WowUp to update an existing GitHub installation. In game, Forever Market announces a newer version when a guild or group member running a version-aware build reports it. The notice appears once per newer version. Type `/fm version` to see your installed version and the latest version reported to you.
 
+Live sync to the optional desktop dashboard is off by default. Type `/fm sync on` to show the colored data strip or `/fm sync off` to hide it. You can also toggle it in **Manage auctions**. With the strip off, your in-game ledger still tracks activity and the dashboard can import saved data after a reload or logout.
+
+Item prices appear on standard item tooltips, including chat links. Bag tooltips show both unit and stack values. Links without a stack count show unit values.
+
 ## Auction tools
 
 At the auction house, use `/fm manage` to review undercuts, inspect an item's ledger, and open **Browse** for saved searches, vendor deals, and live purchase quotes. **Market Sell** supports editable quantities and **Post next**. **Market Buy → Watch** checks favorite items. Craft planning can use last-seen inventory across characters, and trade groups share stocking and posting settings.

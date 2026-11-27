@@ -81,3 +81,22 @@ money=money+294;event(nil,'PLAYER_MONEY')
 assert(count('proceeds_collected')==previous+2)
 print('PASS: duplicate collection hook and two staged wallet confirmations')
 
+
+local visible,allocated=false,0
+local function noop() end
+UIParent={GetEffectiveScale=function() return 1 end}
+function CreateFrame()
+  allocated=allocated+1
+  return {SetFrameStrata=noop,SetFrameLevel=noop,SetPoint=noop,SetSize=noop,EnableMouse=noop,SetScale=noop,
+    Show=function() visible=true end,Hide=function() visible=false end,
+    CreateTexture=function() return {SetSize=noop,SetPoint=noop,SetColorTexture=noop} end}
+end
+assert(not ForeverMarketLiveSync())
+ForeverMarketActivityStatus();update(nil,1);assert(allocated==0)
+assert(ForeverMarketLiveSync(true));ForeverMarketActivityStatus();update(nil,1);assert(visible and allocated==1)
+assert(not ForeverMarketLiveSync(false));assert(not visible)
+local posted=count('posted')
+hooks.PostCommodity({},1,1,25);event(nil,'AUCTION_HOUSE_AUCTION_CREATED',43)
+update(nil,1);assert(not visible and count('posted')==posted+1)
+event(nil,'PLAYER_LOGOUT');assert(ForeverMarketActivityExport)
+print('PASS: optical sync opt-in, immediate off, independent ledger and logout export')

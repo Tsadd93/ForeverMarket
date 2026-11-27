@@ -164,6 +164,10 @@ SlashCmdList.FOREVERMARKET=function(msg)
     print(('%d eligible · %d screened · %d detail requests · %d checked · %d unanswered'):format(r.candidates or 0,r.screened or 0,r.detailRequests or 0,r.checked or 0,r.unanswered or 0))
     if r.snapshotStatus then print('Snapshot: '..r.snapshotStatus) end
     if r.item then print('Current item ID: '..r.item) end
+  elseif (msg=='sync' or msg=='sync on' or msg=='sync off') and ForeverMarketLiveSync then
+    local enabled
+    if msg~='sync' then enabled=msg=='sync on' end
+    print('Forever Market: live desktop sync '..(ForeverMarketLiveSync(enabled) and 'on' or 'off')..'. Use /fm sync on or /fm sync off.')
   elseif msg=='status' and ForeverMarketActivityStatus then ForeverMarketActivityStatus()
   elseif msg=='bags' or msg=='bags on' or msg=='bags off' then
     if ForeverMarketBagToggle then ForeverMarketBagToggle(msg~='bags off')

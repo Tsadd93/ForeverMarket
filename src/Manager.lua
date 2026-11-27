@@ -394,12 +394,16 @@ local function create()
     status:SetText('Close and reopen AH to use '..(p.venue[npc] and 'separate neutral' or 'faction')..' prices here.')
   end))
   control('Auctions',button(panel,214,-70,155,'Review undercuts',function(self)undercutsOnly=not undercutsOnly;self:SetText(undercutsOnly and 'Show all auctions' or 'Review undercuts');page=1;refresh()end))
+  local sync=control('Auctions',button(panel,378,-70,194,'Live desktop sync',function(self)
+    self:SetText('Live desktop sync: '..(ForeverMarketLiveSync(not ForeverMarketLiveSync()) and 'on' or 'off'))
+  end))
   local scope
   scope=control('Rules',button(panel,495,-98,108,'Scope: item',function(self)M.classScope=not M.classScope;self:SetText(M.classScope and 'Scope: category' or 'Scope: item')end))
   local labels={label(panel,15,-56,165),label(panel,190,-56,74),label(panel,266,-56,110),label(panel,375,-56,120)}
   for i,t in ipairs({'Item ID / link / list','Keep qty','Max copper each','List name'}) do labels[i]:SetText(t) end
   cap:SetText('0');target:SetText('1');listName:SetText(prefs().active)
   panel.inputs=function()
+    if ForeverMarketLiveSync then sync:SetText('Live desktop sync: '..(ForeverMarketDB.liveDesktopSync and 'on' or 'off')) end
     local show=mode=='Shopping' or mode=='Rules'
     entry:SetShown(show);cap:SetShown(show);labels[1]:SetShown(show);labels[3]:SetShown(show)
     target:SetShown(mode=='Shopping');listName:SetShown(mode=='Shopping');labels[2]:SetShown(mode=='Shopping');labels[4]:SetShown(mode=='Shopping')

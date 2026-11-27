@@ -263,8 +263,19 @@ local function initialize()
     ForeverMarketDB.__activity=ForeverMarketActivity
 
 end
+function ForeverMarketLiveSync(enabled)
+  initialize()
+  if enabled~=nil then
+    ForeverMarketDB.liveDesktopSync=enabled==true
+    if enabled then record('session',{name='Live desktop sync enabled'})
+    elseif strip then strip:Hide() end
+  end
+  return ForeverMarketDB.liveDesktopSync==true
+end
 function ForeverMarketActivityStatus()
-  initialize();record('session',{name='Connection test'});wake=GetTime()+30
+  initialize()
+  if not ForeverMarketLiveSync() then print('Forever Market: '..#ForeverMarketActivity.events..' events. Live desktop sync is off. /fm sync on enables it.');return end
+  record('session',{name='Connection test'});wake=GetTime()+30
   print('|cff65dfc0Forever Market:|r '..#ForeverMarketActivity.events..' events. Sending connection test for 30 seconds.'..(#skipped>0 and (' Unsupported events: '..table.concat(skipped,', ')) or ''))
 end
 for _,ev in ipairs({'PLAYER_LOGIN','AUCTION_HOUSE_SHOW','AUCTION_HOUSE_CLOSED',
@@ -345,7 +356,7 @@ f:SetScript('OnUpdate',function(_,dt)
   elapsed=elapsed+dt;if elapsed<0.5 then return end;elapsed=0
   if ah then sellItem=readSellSlot() end
   local db=ForeverMarketActivity
-  if db and #db.events>0 and (ah or mail or GetTime()<wake) then
+  if ForeverMarketDB and ForeverMarketDB.liveDesktopSync==true and db and #db.events>0 and (ah or mail or GetTime()<wake) then
     cursor=cursor%#db.events+1;if db.events[cursor].kind~='auction_expired' then draw(db.events[cursor]) end
   elseif strip then strip:Hide() end
 end)

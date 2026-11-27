@@ -163,26 +163,102 @@ local function totals()
   local asOf=M.account().mailAsOf
   summary:SetText(('Listed %s   Sold (gross) %s%s\nSale mail %s%s   Collected today %s'):format(money(l),money(sold),full and '' or ' (partial)',asOf and (money(i)..' at '..date('%m/%d %H:%M',asOf)) or 'unknown',(M.account().mailPartial and ' (partial)' or '')..(estimate>0 and (' + est. '..money(estimate)..' pending') or '')..(unknown>0 and (' + '..unknown..' unpriced') or ''),money(c)))
 end
+local function readable(value)
+  return not issecretvalue or not issecretvalue(value)
+end
+local function itemValues(tip,id,link,n,bound,k,variant)
+  local key=k and ForeverMarketHistoryKey(k)
+  local post,at,source=M.prices(id,key,variant)
+  if not post and key and key~=tostring(id) then
+    post,at=M.prices(id);source='Base item estimate'
+  end
+  local _,_,_,_,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(link or id)
+  tip:AddDoubleLine('Forever Market',n and ('Each   /   Stack of '..n) or 'Per item',.4,1,.75,.85,.85,.85)
+  local function line(label,each)
+    tip:AddDoubleLine(label,money(each)..(n and ('   /   '..money(each*n)) or ''),1,1,1,1,1,1)
+  end
+  if post and not bound then
+    line(n and 'Post at' or 'AH estimate',post)
+    tip:AddDoubleLine('After AH cut',money(ForeverMarketSaleNet(post))..(n and ('   /   '..money(ForeverMarketSaleNet(post*n))) or ''))
+    tip:AddLine(source..'  |  '..math.floor((time()-at)/60)..' min ago',.7,.8,.8)
+  else tip:AddLine(bound and 'Bound' or 'AH price unknown',.75,.75,.75) end
+  if vendor then line('Vendor',vendor) end
+  if (M.materials()[id] or 0)>0 then tip:AddLine('Reserved for crafting',1,.8,.2) end
+  if M.valueLines then M.valueLines(tip,id,link) end
+end
 function M.tooltip(tip,bag,slot)
   local item=C_Container.GetContainerItemInfo(bag,slot)
-  if not item then return end
-  local id,n=item.itemID,item.stackCount or 1
+  if not item or not readable(item.itemID) or not item.itemID or not readable(item.hyperlink) or not readable(item.stackCount) or not readable(item.isBound) then return end
   local loc=ItemLocation:CreateFromBagAndSlot(bag,slot)
   local k=C_AuctionHouse.GetItemKeyFromItem(loc)
   local variant=k and C_AuctionHouse.GetItemCommodityStatus(loc)==Enum.ItemCommodityStatus.Item and ForeverMarketVariant(k,item.hyperlink)
-  local post,at,source=M.prices(id,k and ForeverMarketHistoryKey(k),variant)
-  local _,_,_,_,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(item.hyperlink or id)
-  tip:AddDoubleLine('Forever Market','Each   /   Stack of '..n,.4,1,.75,.85,.85,.85)
-  local function line(label,each,total) tip:AddDoubleLine(label,money(each)..'   /   '..money(total),1,1,1,1,1,1) end
   local bound=item.isBound or C_Item.IsBound and C_Item.IsBound(loc)
-  if post and not bound then
-    line('Post at',post,post*n);line('After AH cut',ForeverMarketSaleNet(post),ForeverMarketSaleNet(post*n))
-    tip:AddLine(source..'  |  '..math.floor((time()-at)/60)..' min ago',.7,.8,.8)
-  else tip:AddLine(bound and 'Bound' or 'AH price unknown',.75,.75,.75) end
-  if vendor then line('Vendor',vendor,vendor*n) end
-  if (M.materials()[id] or 0)>0 then tip:AddLine('Reserved for crafting',1,.8,.2) end
-  if M.valueLines then M.valueLines(tip,id,item.hyperlink) end
-  tip:Show()
+  if not readable(bound) then return end
+  itemValues(tip,item.itemID,item.hyperlink,item.stackCount or 1,bound,k,variant)
+end
+local function linkedValues(tip,data)
+  if not tip or not tip.AddDoubleLine or tip.IsForbidden and tip:IsForbidden() then return end
+  if data and issecrettable and issecrettable(data) then return end
+  local info=tip.GetProcessingTooltipInfo and tip:GetProcessingTooltipInfo()
+  if info and info.getterName=='GetBagItem' and info.getterArgs then
+    local bag,slot=unpack(info.getterArgs)
+    if readable(bag) and readable(slot) and type(bag)=='number' and type(slot)=='number' then M.tooltip(tip,bag,slot);return end
+  end
+  local link=data and data.hyperlink
+  if not readable(link) then return end
+  if not link and data and readable(data.guid) and data.guid and C_Item.GetItemLinkByGUID then link=C_Item.GetItemLinkByGUID(data.guid) end
+  if not readable(link) then return end
+  if not link and tip.GetItem then local _,v=tip:GetItem();link=v end
+  if not readable(link) then return end
+  local id=type(link)=='string' and tonumber(link:match('item:(%d+)')) or data and data.id
+  if not readable(id) or type(id)~='number' or id<=0 then return end
+  local bound,n
+  if data and readable(data.guid) and data.guid and C_Item.GetItemLocationByGUID then
+    local loc=C_Item.GetItemLocationByGUID(data.guid)
+    if loc and (not loc.IsValid or loc:IsValid()) then
+      bound=C_Item.IsBound and C_Item.IsBound(loc)
+      n=C_Item.GetStackCount and C_Item.GetStackCount(loc)
+      if not readable(n) or not readable(bound) then return end
+    end
+  end
+  local _,_,_,_,_,_,_,_,equip=C_Item.GetItemInfo(link or id)
+  local k,variant
+  if link and equip and equip~='' and C_Item.GetDetailedItemLevelInfo then
+    local lvl=C_Item.GetDetailedItemLevelInfo(link)
+    if lvl then
+      k={itemID=id,itemLevel=lvl,itemSuffix=tonumber(link:match('item:%d+:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:(%-?%d+)')) or 0}
+      variant=ForeverMarketVariant(k,link)
+    end
+  end
+  itemValues(tip,id,link,n,bound,k,variant)
+end
+function M.installItemTooltips()
+  if TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType and Enum.TooltipDataType.Item then
+    TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item,linkedValues)
+    return
+  end
+  for _,name in ipairs({'GameTooltip','ItemRefTooltip','ShoppingTooltip1','ShoppingTooltip2','ItemRefShoppingTooltip1','ItemRefShoppingTooltip2'}) do
+    local tip=_G[name]
+    if tip then
+      if tip.HasScript and tip:HasScript('OnTooltipSetItem') then
+        tip:HookScript('OnTooltipSetItem',function(self)
+          local owner=self:GetOwner()
+          if owner and owner.GetBagID and owner.GetID then
+            local bag,slot=owner:GetBagID(),owner:GetID()
+            if type(bag)=='number' and type(slot)=='number' and slot>0 then
+              local _,link=self:GetItem()
+              local item=C_Container.GetContainerItemInfo(bag,slot)
+              if item and item.hyperlink==link then M.tooltip(self,bag,slot);return end
+            end
+          end
+          linkedValues(self)
+        end)
+      else
+        if tip.SetHyperlink then hooksecurefunc(tip,'SetHyperlink',function(self,link)if type(link)=='string' and link:find('item:',1,true) then linkedValues(self,{hyperlink=link}) end end) end
+        if tip.SetBagItem then hooksecurefunc(tip,'SetBagItem',M.tooltip) end
+      end
+    end
+  end
 end
 local events=CreateFrame('Frame')
 for _,event in ipairs({'PLAYER_LOGIN','ITEM_SEARCH_RESULTS_UPDATED','ITEM_SEARCH_RESULTS_ADDED','AUCTION_HOUSE_SHOW','OWNED_AUCTIONS_UPDATED','TRADE_SKILL_SHOW','TRADE_SKILL_UPDATE','TRADE_SKILL_LIST_UPDATE','CRAFT_SHOW','CRAFT_UPDATE','UNIT_SPELLCAST_START','UNIT_SPELLCAST_SUCCEEDED','COMMODITY_PRICE_UPDATED','COMMODITY_SEARCH_RESULTS_UPDATED','COMMODITY_PRICE_UNAVAILABLE','BAG_UPDATE_DELAYED','COMMODITY_PURCHASE_SUCCEEDED','REPLICATE_ITEM_LIST_UPDATE'}) do pcall(events.RegisterEvent,events,event) end
@@ -190,7 +266,7 @@ local capture,craftCapture,lastBook,nextCheck
 events:SetScript('OnEvent',function(_,event,arg,second,third)
   if event=='PLAYER_LOGIN' then
     M.settings();M.restoreCollected()
-    if GameTooltip and GameTooltip.SetBagItem then hooksecurefunc(GameTooltip,'SetBagItem',M.tooltip) end
+    M.installItemTooltips()
   elseif event=='AUCTION_HOUSE_SHOW' then
     create()
     local p=AuctionHouseFrame.AuctionsFrame

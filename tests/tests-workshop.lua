@@ -149,6 +149,20 @@ M.tooltip(tip,0,1)
 assert(lines['Post at']==ForeverMarketCoins(30000)..'   /   '..ForeverMarketCoins(150000))
 assert(lines['After AH cut']==ForeverMarketCoins(28500)..'   /   '..ForeverMarketCoins(142500))
 assert(lines.Vendor==ForeverMarketCoins(5)..'   /   '..ForeverMarketCoins(25))
+local postCall
+Enum.TooltipDataType={Item=0}
+TooltipDataProcessor={AddTooltipPostCall=function(kind,fn)assert(kind==0);postCall=fn end}
+M.installItemTooltips()
+local function resetTip() for k in pairs(lines) do lines[k]=nil end end
+resetTip();postCall(tip,{hyperlink='item:'..out,id=out})
+assert(lines['AH estimate']==ForeverMarketCoins(30000) and lines.Vendor==ForeverMarketCoins(5) and lines['Forever Market']=='Per item')
+tip.GetProcessingTooltipInfo=function()return {getterName='GetBagItem',getterArgs={0,1}} end
+resetTip();postCall(tip,{id=out});assert(lines['Post at']==ForeverMarketCoins(30000)..'   /   '..ForeverMarketCoins(150000))
+tip.GetProcessingTooltipInfo=nil
+TooltipDataProcessor=nil
+ItemRefTooltip={HasScript=function()return true end,HookScript=function(_,_,fn)postCall=fn end,GetOwner=function()return nil end,GetItem=function()return 'Product','item:'..out end,AddDoubleLine=tip.AddDoubleLine,AddLine=tip.AddLine}
+M.installItemTooltips();resetTip();postCall(ItemRefTooltip);assert(lines['AH estimate']==ForeverMarketCoins(30000));ItemRefTooltip=nil
+print('PASS: modern linked-item and bag paths; legacy clicked chat item')
 print('PASS: production bag tooltip per item/stack, AH cut and vendor values')
 
 
