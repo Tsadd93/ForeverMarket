@@ -192,7 +192,7 @@ local function postingLimit(s,unitPrice,recheck)
 end
 local function paint()
   local protected=blacklist()
-  local ready, waiting, held = {}, {}, {}
+  local ready, waiting, held, kept = {}, {}, {}, {}
   local editingOrder={}
   for i,row in ipairs(rows) do if row.slot then editingOrder[row.slot.stackKey]=i end end
   local nextRank = #slots
@@ -211,7 +211,9 @@ local function paint()
 
     end
     local group = waiting
-    if s.holdReason then
+    if protected[s.k.itemID] then
+      group = kept
+    elseif s.holdReason then
       group = held
     elseif fresh(q) and price(q,s) and not s.locked then
       group = ready
@@ -238,6 +240,7 @@ local function paint()
       break
     end
   end
+  for _,s in ipairs(kept) do ordered[#ordered+1]=s end
   for i,row in ipairs(rows) do
     local s=ordered[i];row.slot=s
     row.itemRef=s and s.link;row.hover:SetShown(s~=nil)
@@ -477,6 +480,7 @@ makeRow=function(i)
   row.keep:SetScript('OnClick',function(self)
     local id=row.slot and row.slot.k.itemID
     if id and (not self.item or self.item==id) then
+      for _,r in ipairs(rows) do r.qty:ClearFocus() end
       local protected=blacklist()
       if protected[id] then protected[id]=nil else protected[id]=row.slot.link end
     end
