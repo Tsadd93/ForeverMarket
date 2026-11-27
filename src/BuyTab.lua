@@ -79,6 +79,7 @@ local function room(id,stack)
   if group and group.stock>0 then limit=group.stock end
   return math.max(0,limit-(onHand()[id] or 0))
 end
+local investScan=false
 local watchScan=false
 local watchAgain=0
 local itemConfirmation=false
@@ -273,22 +274,23 @@ local function rankCandidates(snapshot,grouped,cash)
     local picks={}
     for _,lead in ipairs(leads) do
       local d=snapshot.books[lead.id]
-      local cap=math.floor(lead.ref*.9)-2
+      local cap=lead.model and lead.model.exit or math.floor(lead.ref*.9)-2
       local pick=false
       if d and d.low<=cash and cap*ForeverMarketKeepBP()>=d.low*(10000+ForeverMarketMarginBP()) then
         local info=api.GetItemKeyInfo and api.GetItemKeyInfo(api.MakeItemKey(lead.id))
         local commodity=info and info.isCommodity
         local exit=cap
-        if commodity then exit=math.min(exit,ForeverMarketPostPrice(commodityResaleAsk(d)))
+        if commodity and lead.model then exit=d.floorPrice<=lead.model.entry and cap or 0
+        elseif commodity then exit=math.min(exit,ForeverMarketPostPrice(commodityResaleAsk(d)))
         elseif d.nextPrice then exit=math.min(exit,ForeverMarketPostPrice(d.nextPrice)) end
-        local qty=commodity and math.min(d.lowQty,math.floor(cash/d.low)) or 1
+        local qty=commodity and math.min(d.lowQty,math.floor(cash*(lead.model and .20 or 1)/d.low)) or 1
         local dep=0
-        if commodity and api.CalculateCommodityDeposit then dep=api.CalculateCommodityDeposit(lead.id,1,qty) or 0
+        if commodity and qty>0 and api.CalculateCommodityDeposit then dep=api.CalculateCommodityDeposit(lead.id,1,qty) or 0
         elseif C_Item.GetItemInfo then dep=math.max(100,select(11,C_Item.GetItemInfo(lead.id)) or 0) end
         lead.potential=math.max(0,ForeverMarketSaleNet(exit*qty)-d.low*qty-ForeverMarketDepositLoss(qty))
         -- Mixed equipment variants can hide a better comparable listing.
         if commodity then
-          pick=qty==d.lowQty and qty*d.low+dep<=cash and lead.potential>0 and lead.potential*10000>=qty*d.low*ForeverMarketMarginBP()
+          pick=(lead.model or qty==d.lowQty and qty*d.low+dep<=cash) and lead.potential>0 and lead.potential*10000>=qty*d.low*ForeverMarketMarginBP()
         elseif not info or info.isCommodity==nil then
           pick=d.nextPrice~=nil
         else
@@ -351,9 +353,10 @@ local function candidates(keepVerified,snapshot)
   screened,browseFallback=0,0
   rechecked={}
   junkCount,unknownCount,pendingFilter=0,0,nil
-  local grouped=not watchScan and supportsBrowse()
+  local grouped=not investScan and not watchScan and supportsBrowse()
   if not keepVerified then verified={} end
   if ForeverMarketRepairHistory then report.merged=ForeverMarketRepairHistory() end
+  if investScan and ForeverMarketSeedFloors then ForeverMarketSeedFloors() end
   local db=ForeverMarketHistory()
   checked,unanswered,totalLeads=0,0,0
   missingScan=not db or not next(db)
@@ -375,7 +378,13 @@ local function candidates(keepVerified,snapshot)
     local raw=tostring(key)
     local species=tonumber(raw:match('^p:(%d+)$'))
     local id=species and -species or tonumber(raw) or tonumber(raw:match('^gr?:(%d+):'))
-    if id and (not watchScan or ForeverMarketTools.favorite(id)) and type(r)=='table' and type(r.m)=='number' and r.m>0 and r.h then
+    if investScan then
+      local model=tonumber(raw) and ForeverMarketRecovery and ForeverMarketRecovery(r.floors,today)
+      local info=model and api.GetItemKeyInfo(api.MakeItemKey(id))
+      if info and info.isCommodity then
+        leads[#leads+1]={id=id,ref=model.exit/.9+3,model=model,scarceDays=0,affordable=true,potential=0,researchRank=0,rank=model.wins/model.trials}
+      else report.thinHistory=report.thinHistory+1 end
+    elseif id and (not watchScan or ForeverMarketTools.favorite(id)) and type(r)=='table' and type(r.m)=='number' and r.m>0 and r.h then
       local prices,recentPrices={},{}
       local scarceDays=0
       for day,hi in pairs(r.h) do
@@ -469,6 +478,12 @@ local function allocation(v,cash)
   if lo==0 or v.clearTier and lo<v.qty then return 0,0 end
   return lo,resaleDeposit(v,lo)
 end
+local function investmentBudget(cash)
+  local f=fund();local committed=0
+  for _,h in pairs(f.held) do if (h.invested or 0)>0 and h.n>0 then committed=committed+math.ceil(h.cost*h.invested/h.n) end end
+  for _,lot in ipairs(f.lots) do if lot.target and lot.n>0 then committed=committed+math.ceil((lot.basis or 0)*math.min(lot.invested or 0,lot.n)/lot.n) end end
+  return math.max(0,math.floor((cash+committed)*.20)-committed)
+end
 local function plan()
   local choices={}
   for _,v in pairs(verified) do if GetTime()-v.at<60 then choices[#choices+1]=v end end
@@ -483,6 +498,7 @@ local function plan()
   end
   table.sort(choices,function(a,b)if scores[a]==scores[b] then return a.id<b.id end return scores[a]>scores[b] end)
   local start=available()
+  if investScan then start=investmentBudget(start) end
   local function fill(order)
     local list,cash,gain={},start,0
     for _,v in ipairs(order) do
@@ -524,6 +540,7 @@ local function buy(row)
   if pressed and (pressed.id~=p.v.id or pressed.n~=p.n or pressed.total~=row.buyTotal or pressed.auctionID~=p.v.auctionID) then
     note('The offer changed. Review the row and click Buy again.');return
   end
+  if p.v.model and p.n*p.v.low+p.dep>investmentBudget(available()) then clearQuote();note("Investment budget changed. Review the updated quantity.");return end
   if p.v.auctionID then
     local v=p.v
     if not itemConfirmation or p.n~=1 or p.dep+v.low>available() then return end
@@ -552,7 +569,7 @@ local function buy(row)
     clearQuote();retire(p.v.id,'Offer changed');note('Offer changed. Shopping list updated.');return
   end
   if row.buyTotal~=quote.total then note('Review the updated buy total and click again.');return end
-  fund().pending={id=quote.id,n=quote.n,total=quote.total,dep=p.dep,at=time()}
+  fund().pending={target=p.v.model and p.v.exit,id=quote.id,n=quote.n,total=quote.total,dep=p.dep,at=time()}
   quote=nil
   local ok,err=pcall(api.ConfirmCommoditiesPurchase,p.v.id,p.n)
   if not ok then fund().pending=nil;note(tostring(err)) end
@@ -614,6 +631,7 @@ local function render()
     local itemName=p and C_Item.GetItemNameByID(p.v.itemID or p.v.id)
     row.marketId=p and (p.v.itemID or p.v.id)
     row.priceReason=p and not p.inactive and ("Exit per item "..ForeverMarketCoins(p.v.exit).." / deposit reserved "..ForeverMarketCoins(p.dep or 0)) or nil
+    if p and p.v.model and not p.inactive then row.priceReason=("Investment / %d of %d prior dips recovered within 3 days. "):format(p.v.model.wins,p.v.model.trials)..row.priceReason end
     row.saleText=itemName and ForeverMarketTools and ForeverMarketTools.saleLabel and ForeverMarketTools.saleLabel(itemName)
     row.qty:SetText(p and p.n or '')
     row.cost:SetText(row.buyTotal and ForeverMarketCoins(row.buyTotal) or '')
@@ -629,6 +647,7 @@ local function render()
   elseif quote then return
   elseif available()==0 then note('No trading cash available for a purchase.')
   elseif missingScan then note('Open Market Scan to collect price history.')
+  elseif investScan and totalLeads==0 then note('Invest: no qualifying recovery patterns');detail:SetText('Requires 14 observed bulk-price days and repeated rebounds.')
   elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates · %d junk filtered · %d uncached'):format(junkCount,unknownCount))
   else
     local progress=('%g%% | %d/%d resolved | %d unanswered'):format(ForeverMarketMarginBP()/100,math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
@@ -645,7 +664,7 @@ local function render()
     end
     progress=progress..(' | %d junk · %d stocked'):format(junkCount,report and report.stockSkipped or 0)
     if unknownCount>0 then progress=progress..(' | %d uncached'):format(unknownCount) end
-    if buyCount>0 then note(progress);if completed then detail:SetText(('Complete · %d shopping list items'):format(buyCount)) end
+    if buyCount>0 then note((investScan and 'Invest / ' or '')..progress);if completed then detail:SetText(('Complete · %d shopping list items'):format(buyCount)) end
     elseif browse or categoryIndex<=#categories or search or cursor<=#leads then note(progress)
     else note(progress);detail:SetText(('Short history %d / over budget %d / spread %d / no supply %d'):format(report.thinHistory or 0,report.overBudget or 0,report.weakSpread or 0,report.noSupply or 0)) end
   end
@@ -672,7 +691,7 @@ local function inspect(id)
   end
   local d=ForeverMarketPriceDepth(levels)
   retire(id,d and 'Margin too low' or 'No live offer')
-  if d and not owned[d.low] and not owned[d.nextPrice] then
+  if d and not owned[d.low] and (v.model and d.floorPrice<=v.model.entry or not v.model and not owned[d.nextPrice]) then
     local get=C_Item.GetItemInfo or GetItemInfo
     local stack,vendor
     if get then
@@ -685,12 +704,12 @@ local function inspect(id)
       return
     end
     v.stack=stack;v.vendor=vendor
-    v.exit=math.min(ForeverMarketPostPrice(commodityResaleAsk(d)),math.floor(v.ref*.9)-2)
+    v.exit=v.model and v.model.exit or math.min(ForeverMarketPostPrice(commodityResaleAsk(d)),math.floor(v.ref*.9)-2)
     -- Fee rounding and deposit depend on stack quantity. Screen on the
     -- unrounded ceiling here; plan() checks actual stack proceeds in copper.
     v.edge=v.exit*ForeverMarketKeepBP()/10000-d.low
     if v.exit*ForeverMarketKeepBP()>=d.low*(10000+ForeverMarketMarginBP()) then
-      v.low=d.low;v.qty=d.lowQty;v.clearTier=true;v.at=GetTime();verified[id]=v
+      v.low=d.low;v.qty=d.lowQty;v.clearTier=not v.model;v.at=GetTime();verified[id]=v
       if remembered[id] then remembered[id].reason=nil end
     end
   end
@@ -791,7 +810,7 @@ local function tick(refreshUI)
       if v and not rechecked[id] and GetTime()-v.at>=60 then
         rechecked[id]=true
         retire(id,'Rechecking price')
-        table.insert(leads,cursor,{id=id,ref=v.ref,recheck=true})
+        table.insert(leads,cursor,{id=id,ref=v.ref,model=v.model,recheck=true})
         break
       end
     end
@@ -891,18 +910,20 @@ local function create()
     b:SetSize(65,24);b:SetPoint('TOPLEFT',x,0);b:SetText(text);b:SetScript('OnClick',fn)
     return b
   end
-  local startButton=control('Start',442,function()watchScan=false;start() end)
+  local startButton=control('Start',442,function()investScan=false;watchScan=false;start() end)
   local stopButton=control('Stop',511,function()
     watchScan=false;running=false;completed=false;search=nil;browse=nil;clearQuote();fundMessageUntil=0;render()
   end)
   control('Restart',580,start)
+  local invest=control('Invest',0,function()investScan=true;watchScan=false;start()end)
+  if invest.ClearAllPoints then invest:ClearAllPoints() end;invest:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-32)
   if ForeverMarketTools then
   local wb=control('Watch',0,function()
     if not ForeverMarketTools or not ForeverMarketTools.favorite then return end
-    watchScan=true;watchAgain=GetTime()+60;start()
+    investScan=false;watchScan=true;watchAgain=GetTime()+60;start()
   end)
   wb:ClearAllPoints();wb:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-72,-32) end
-  if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-37) end
+  if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-215,-37) end
   scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-108);scroll:SetPoint('BOTTOMRIGHT',-26,4)
   content=CreateFrame('Frame',nil,scroll);content:SetSize(678,1);scroll:SetScrollChild(content)
   panel:SetScript('OnShow',function()
@@ -936,6 +957,9 @@ function ForeverMarketFundHoldPrice(id,qty,deposit)
   if (not h or h.n==0) and type(id)=="string" then h=fund().held[tonumber(id:match("^(%d+)/"))] end
   return h and ForeverMarketFundMinimum(h.cost or 0,h.n,deposit or 0,qty or 1) or 0
 end
+function ForeverMarketInvestmentTarget(id)
+  local h=fund().held[id];return h and (h.invested or 0)>0 and h.target or nil
+end
 function ForeverMarketFundPost(id,n,price,deposit,itemID)
   local h=fund().held[id];posting=nil
   if (not h or h.n<=0) and itemID and fund().held[itemID] then id=itemID;h=fund().held[id] end
@@ -957,6 +981,7 @@ function ForeverMarketFundActivity(kind,e)
     if ForeverMarketTools and ForeverMarketTools.trackAcquisition then ForeverMarketTools.trackAcquisition(e.name,p.n) end
     local holding=p.holding or p.id
     local h=f.held[holding] or {n=0,reserve=0};f.held[holding]=h
+    if p.target then h.target=math.max(h.target or 0,p.target);h.invested=(h.invested or 0)+p.n end
     h.itemID=p.id;h.lead=p.lead or p.id;h.inMail=(h.inMail or 0)+p.n
     h.cost=(h.cost or 0)+e.total;h.n=h.n+p.n;h.reserve=h.reserve+p.dep;retire(p.lead or p.id,'Purchased')
   elseif kind=='purchased_item_received' and e.itemId and e.quantity then
@@ -971,8 +996,10 @@ function ForeverMarketFundActivity(kind,e)
     local dep=t.dep or api.CalculateCommodityDeposit(t.itemID,1,t.n)
     if dep then
       local basis=math.floor((h.cost or 0)*t.tracked/h.n)
+      local investmentQty=math.min(h.invested or 0,t.tracked);local investmentTarget=h.target
+      h.invested=math.max(0,(h.invested or 0)-t.tracked);if h.invested==0 then h.target=nil end
       h.cost=math.ceil((h.cost or 0)*(h.n-t.tracked)/h.n);f.cash=f.cash-math.ceil(dep*t.tracked/t.n);h.reserve=math.floor(h.reserve*(h.n-t.tracked)/h.n);h.n=h.n-t.tracked
-      f.lots[#f.lots+1]={name=e.name,n=t.tracked,posted=t.n,basis=basis,holding=t.id,itemID=t.itemID,deposit=math.ceil(dep*t.tracked/t.n),price=t.price,auctionId=e.auctionId}
+      f.lots[#f.lots+1]={name=e.name,n=t.tracked,invested=investmentQty,target=investmentTarget,posted=t.n,basis=basis,holding=t.id,itemID=t.itemID,deposit=math.ceil(dep*t.tracked/t.n),price=t.price,auctionId=e.auctionId}
     end
   elseif kind=='proceeds_collected' and e.invoiceType=='seller' and e.quantity and e.quantity>0 and e.amount and e.fee and e.deposit then
     local gross=e.amount+e.fee-e.deposit

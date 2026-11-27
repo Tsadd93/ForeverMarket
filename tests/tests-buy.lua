@@ -430,3 +430,31 @@ ForeverMarketSnapshot=function()return {at=elapsed,books={[41003]=smallBook}} en
 ordered={};start:OnClick();update()
 assert(#ordered==0,'recent fall should cap the resale estimate')
 print('PASS: isolated spike, full-stack fee rounding and recent downward repricing')
+
+local priorHistory=ForeverMarketHistory
+dofile('src/History.lua')
+ForeverMarketHistory=priorHistory
+local floors={}
+for day=65,99 do floors[day]=100 end
+for _,day in ipairs({73,81,89}) do floors[day]=70 end
+local model=assert(ForeverMarketRecovery(floors,100));assert(model.wins==3 and model.entry==85 and model.exit==93)
+floors[100]=10000;assert(ForeverMarketRecovery(floors,100).exit==93)
+assert(not ForeverMarketRecovery({[99]=10},100))
+local falling={};for day,p in pairs(floors) do falling[day]=day>=94 and 60 or p end
+assert(not ForeverMarketRecovery(falling,100))
+db={['41001']={m=70,h=floors,floors=floors}}
+local dip={low=70,lowQty=100,floorPrice=70,floorQty=100}
+ForeverMarketSnapshot=function()return {at=elapsed,books={[41001]=dip}} end
+C_AuctionHouse.GetNumCommoditySearchResults=function()return 1 end
+C_AuctionHouse.GetCommoditySearchResultInfo=function()return {unitPrice=70,quantity=100} end
+local invest
+for _,b in ipairs(buttons) do if b.text=='Invest' then invest=b end end
+edit:SetText('1');set:OnClick()
+ordered={};invest:OnClick();update();dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001)
+local pick=observedRows[1].pick
+assert(pick and pick.v.model and pick.n<100 and pick.n*70+pick.dep<=2000)
+C_AuctionHouse.GetCommoditySearchResultInfo=function()return {unitPrice=90,quantity=100} end
+invest:OnClick();update();dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001)
+assert(not observedRows[1].pick or observedRows[1].pick.inactive)
+print('PASS: investment replay, prior-day isolation, decline rejection, partial-tier purchase, budget and live price gate')
+

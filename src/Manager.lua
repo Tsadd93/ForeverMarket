@@ -78,13 +78,33 @@ function M.saleLabel(name)
   local n,count=M.saleCount(name)
   return n..' sold across '..count..' collected sales in the last 7 calendar days'
 end
+local turnover={}
 function M.salesWeight(name)
-  local n=M.saleCount(name)
-  return 1+math.min(n,30)/30
+  local events=ForeverMarketActivity and ForeverMarketActivity.events
+  if not events then return 1 end
+  local day=math.floor(time()/86400);local scope=M.scope()
+  if turnover.day~=day or turnover.scope~=scope or turnover.events~=events or turnover.index>#events then
+    turnover={day=day,scope=scope,events=events,index=0,byName={},seen={}}
+  end
+  for i=turnover.index+1,#events do
+    local e=events[i]
+    if e.at>=(day-13)*86400 and e.name and (e.realm or '')..'|'..(e.faction or '')==scope then
+      local sold=e.kind=='sale_notice' and e.auctionId and not turnover.seen[e.auctionId]
+      if sold or e.kind=='auction_expired' then
+        local r=turnover.byName[e.name] or {sales=0,returns=0};turnover.byName[e.name]=r
+        if sold then turnover.seen[e.auctionId]=true;r.sales=r.sales+1 else r.returns=r.returns+1 end
+      end
+    end
+  end
+  turnover.index=#events
+  local r=turnover.byName[name]
+  if not r then return 1 end
+  return math.max(.5,math.min(1.5,2*(r.sales+2)/(r.sales+r.returns+4)))
 end
 local function restoreLot(lot,r,fee)
   local h=ForeverMarketTradingFund().held[lot.holding]
   if not h then return end
+  if lot.target and (lot.invested or 0)>0 then h.target=math.max(h.target or 0,lot.target);h.invested=(h.invested or 0)+math.min(lot.n,lot.invested) end
   h.n=h.n+lot.n;h.cost=(h.cost or 0)+lot.basis
   r.loss=r.loss+lot.deposit+(fee or 0)
   lot.n=0;lot.basis=0;lot.deposit=0
@@ -220,8 +240,8 @@ local function owner(id)
 end
 local function ownedDetail(r)
   if r.status~=0 then return 'Sold / awaiting settlement' end
-  if not r.buyoutAmount or not r.quantity or r.quantity<1 then return 'Bid auction' end
-  local unit=math.ceil(r.buyoutAmount/r.quantity)
+  if not (r.buyoutAmount or r.unitPrice) or not r.quantity or r.quantity<1 then return 'Bid auction' end
+  local unit=math.ceil(M.listingGross(r)/r.quantity)
   local k=r.itemKey
   local info=k and api.GetItemKeyInfo(k)
   local variant=k and not (info and info.isCommodity) and ForeverMarketVariant(k,r.itemLink)

@@ -158,9 +158,10 @@ local function totals()
     summary=parent:CreateFontString(nil,'OVERLAY','GameFontNormalSmall')
     summary:SetPoint('TOPRIGHT',parent,'TOPRIGHT',-12,-4)
   end
-  local l,i,c,u=M.saleTotals()
+  local l,i,c,unknown,sold,estimate=M.saleTotals()
   local full=not C_AuctionHouse.HasFullOwnedAuctionResults or C_AuctionHouse.HasFullOwnedAuctionResults()
-  summary:SetText(('Listed %s%s    Incoming %s%s    Today %s'):format(money(l),full and '' or ' (partial)',money(i),u>0 and ('  +'..u..' awaiting amount') or '',money(c)))
+  local asOf=M.account().mailAsOf
+  summary:SetText(('Listed %s   Sold (gross) %s%s\nSale mail %s%s   Collected today %s'):format(money(l),money(sold),full and '' or ' (partial)',asOf and (money(i)..' at '..date('%m/%d %H:%M',asOf)) or 'unknown',(M.account().mailPartial and ' (partial)' or '')..(estimate>0 and (' + est. '..money(estimate)..' pending') or '')..(unknown>0 and (' + '..unknown..' unpriced') or ''),money(c)))
 end
 function M.tooltip(tip,bag,slot)
   local item=C_Container.GetContainerItemInfo(bag,slot)
@@ -193,7 +194,7 @@ events:SetScript('OnEvent',function(_,event,arg,second,third)
   elseif event=='AUCTION_HOUSE_SHOW' then
     create()
     local p=AuctionHouseFrame.AuctionsFrame
-    if p and not p.foreverMarketSummary then p.foreverMarketSummary=true;p:HookScript('OnShow',totals) end
+    if p and not p.foreverMarketSummary then p.foreverMarketSummary=true;p:HookScript('OnShow',function() if C_AuctionHouse.QueryOwnedAuctions then C_AuctionHouse.QueryOwnedAuctions({}) end;totals() end) end
   elseif event=='OWNED_AUCTIONS_UPDATED' then totals()
   elseif event=='TRADE_SKILL_SHOW' or event=='TRADE_SKILL_UPDATE' or event=='TRADE_SKILL_LIST_UPDATE' or event=='CRAFT_SHOW' or event=='CRAFT_UPDATE' then
     capture=GetTime()+.15;craftCapture=event=='CRAFT_SHOW' or event=='CRAFT_UPDATE'

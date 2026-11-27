@@ -72,3 +72,12 @@ local before=count('proceeds_collected')
 money=money+588;event(nil,'PLAYER_MONEY');event(nil,'PLAYER_MONEY')
 assert(count('proceeds_collected')==before+2)
 print('PASS: two payouts confirmed by one wallet update, counted once')
+
+local previous=count('proceeds_collected')
+hooks.TakeInboxMoney(1);hooks.TakeInboxMoney(1);hooks.TakeInboxMoney(2)
+money=money+294;event(nil,'PLAYER_MONEY')
+assert(count('proceeds_collected')==previous+1)
+money=money+294;event(nil,'PLAYER_MONEY')
+assert(count('proceeds_collected')==previous+2)
+print('PASS: duplicate collection hook and two staged wallet confirmations')
+

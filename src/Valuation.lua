@@ -20,16 +20,47 @@ function M.account()
 end
 function M.restoreCollected()
   local a=M.account()
-  if a.collectedInitialized then return end
+  if a.receiptsRebuilt then return end
   local name=UnitName('player')
   local source=ForeverMarketActivity or ForeverMarketDB.__activity
-  for _,e in ipairs(source and source.events or {}) do
-    if e.kind=='proceeds_collected' and e.invoiceType=='seller' and e.amount and e.at and e.character==name
-      and e.realm==GetRealmName() and e.region==GetCurrentRegion() and e.faction==UnitFactionGroup('player') then
-      local day=date('%Y-%m-%d',e.at);a.collected[day]=(a.collected[day] or 0)+e.amount
+  if not source or not source.events then return end
+  local days,queue,confirmed={}, {}, {}
+  local before,last
+  for _,e in ipairs(source.events) do
+    if e.character==name and e.region==GetCurrentRegion() and e.faction==UnitFactionGroup('player')
+      and (e.realm==GetRealmName() or e.realm==GetRealmName()..' [Neutral AH]') then
+      local day=date('%Y-%m-%d',e.at)
+      if e.kind=='sale_notice' and e.auctionId and a.notice[e.auctionId] then a.notice[e.auctionId].at=e.at end
+      if not last or e.at-last>10 or e.kind=='session' then queue={};before=nil;confirmed={} end
+      last=e.at
+      if e.kind=='collection_requested' and e.invoiceType=='seller' and (e.amount or 0)>0 then
+        if before~=e.gold then before=e.gold;queue={};confirmed={} end
+        queue[#queue+1]=e
+      elseif e.kind=='proceeds_collected' and e.invoiceType=='seller' and e.amount then
+        days[day]=(days[day] or 0)+e.amount
+        local k=(e.name or '')..'/'..e.amount
+        confirmed[k]=(confirmed[k] or 0)+1
+      elseif e.kind=='wallet' and before and e.gold~=before then
+        local sum=0;local matched
+        for i,q in ipairs(queue) do
+          if e.at-q.at>10 then break end
+          sum=sum+q.amount
+          if sum==e.gold-before then matched=i;break end
+          if sum>e.gold-before then break end
+        end
+        if matched then
+          for i=1,matched do
+            local q=table.remove(queue,1);local k=(q.name or '')..'/'..q.amount
+            if (confirmed[k] or 0)>0 then confirmed[k]=confirmed[k]-1
+            else days[day]=(days[day] or 0)+q.amount end
+          end
+        else queue={} end
+        before=e.gold;confirmed={}
+      end
     end
   end
-  a.collectedInitialized=true
+  for day,n in pairs(days) do a.collected[day]=math.max(a.collected[day] or 0,n) end
+  a.receiptsRebuilt=true;a.collectedInitialized=true
 end
 function M.scope() return GetRealmName()..'|'..UnitFactionGroup('player') end
 function M.history(key)
@@ -97,18 +128,43 @@ function M.cost(id,n)
     end
   end
 end
+function M.listingGross(r)
+  local q=r.quantity or 0
+  if r.status==1 and r.bidder and (r.bidAmount or 0)>0 then return r.bidAmount end
+  if r.unitPrice and r.unitPrice>0 then return r.unitPrice*q end
+  local s=r.auctionID and M.account().sales[r.auctionID]
+  if s and s.amount and s.amount>0 and s.qty and s.qty>=q and q>0 and (r.status==0 or not r.bidder) then return math.floor(s.amount*q/s.qty) end
+  return (r.buyoutAmount and r.buyoutAmount>0 and r.buyoutAmount) or r.bidAmount or 0
+end
 function M.saleTotals()
   local a=M.account()
   local api=C_AuctionHouse
-  local listed=0
+  local listed,sold=0,0
+  local pending,seen={},{}
   for i=1,api.GetNumOwnedAuctions() do
     local r=api.GetOwnedAuctionInfo(i)
-    if r and r.status==0 then listed=listed+(r.buyoutAmount or r.bidAmount or 0) end
+    if r and r.status==0 then listed=listed+M.listingGross(r) elseif r and r.status==1 then
+      local gross=M.listingGross(r);sold=sold+gross
+      if r.auctionID then
+        seen[r.auctionID]=true
+        local s=a.sales[r.auctionID];local n=a.notice[r.auctionID]
+        if n and n.at and n.at>(a.mailAsOf or 0) then
+          pending[#pending+1]=ForeverMarketSaleNet(gross)+(s and s.qty==r.quantity and s.deposit or 0)
+        end
+      end
+    end
   end
   local amount=0
   for _,m in ipairs(a.mail) do amount=amount+m.amount end
-  local count=0;for _ in pairs(a.notice) do count=count+1 end
-  return listed,amount,a.collected[date('%Y-%m-%d')] or 0,count
+  local count=0
+  for id,n in pairs(a.notice) do
+    local s=a.sales[id]
+    if not seen[id] and n.at and n.at>(a.mailAsOf or 0) and s and s.qty==1 and s.amount then
+      pending[#pending+1]=ForeverMarketSaleNet(s.amount)+(s.deposit or 0)
+    elseif not seen[id] and n.at and n.at>(a.mailAsOf or 0) then count=count+1 end
+  end
+  local estimate=0;for _,value in ipairs(pending) do estimate=estimate+value end
+  return listed,amount,a.collected[date('%Y-%m-%d')] or 0,count,sold,estimate
 end
 function M.mailSnapshot(list)
   local a=M.account()
@@ -124,7 +180,7 @@ function M.mailSnapshot(list)
       end
     end
   end
-  a.mail=list
+  a.mail=list;a.mailAsOf=time()
 end
 function M.onActivity(kind,e)
   local a=M.account()
@@ -133,7 +189,7 @@ function M.onActivity(kind,e)
   elseif kind=='sale_notice' and e.auctionId then
     local s=a.sales[e.auctionId]
     if s then s.soldAt=e.at end
-    a.notice[e.auctionId]={name=s and s.name,text=e.name}
+    a.notice[e.auctionId]={name=s and s.name,text=e.name,at=e.at}
   elseif kind=='proceeds_collected' and e.invoiceType=='seller' then
     local day=date('%Y-%m-%d',e.at);a.collected[day]=(a.collected[day] or 0)+e.amount
     for i,m in ipairs(a.mail) do if e.mailRevision==a.mailRevision and m.name==e.name and m.amount==e.amount and m.qty==e.quantity then table.remove(a.mail,i);break end end

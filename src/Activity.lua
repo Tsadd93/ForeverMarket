@@ -55,14 +55,41 @@ local function requestItem(index,attachment)
   received[key]={name=name,itemId=id,quantity=count,before=getCount(id),expires=GetTime()+10}
   record('item_collection_requested',{name=name,itemId=id,quantity=count})
 end
+local function settleMoney()
+  local b=mailTake
+  if not b then return end
+  if GetTime()>b.expires then mailTake=nil;return end
+  local delta=GetMoney()-b.before
+  if delta==0 then return end
+  local sum=0
+  for i,e in ipairs(b.entries) do
+    sum=sum+e.amount
+    if sum==delta then
+      for j=1,i do
+        local entry=table.remove(b.entries,1)
+        local copy={};for k,v in pairs(entry) do copy[k]=v end
+        record('proceeds_collected',copy)
+      end
+      b.before=GetMoney()
+      if #b.entries==0 then mailTake=nil end
+      return
+    end
+  end
+  mailTake=nil
+end
 local function requestMoney(index)
   local e=invoice(index)
   if not e or (e.amount or 0)<=0 then return end
   if ForeverMarketTools then e.mailRevision=ForeverMarketTools.account().mailRevision end
+  settleMoney()
   local wallet=GetMoney()
   if not mailTake or GetTime()>mailTake.expires or mailTake.before~=wallet then
     mailTake={entries={},before=wallet,expires=GetTime()+10}
   end
+  for _,p in ipairs(mailTake.entries) do
+    if p.mailIndex==index and p.mailRevision==e.mailRevision and p.name==e.name and p.amount==e.amount then return end
+  end
+  e.mailIndex=index;mailTake.expires=GetTime()+10
   mailTake.entries[#mailTake.entries+1]=e
   record('collection_requested',e)
 end
@@ -72,7 +99,8 @@ local function readMail()
   local sellerMail={}
   local returned={}
   local expiredPattern=AUCTION_EXPIRED_MAIL_SUBJECT and AUCTION_EXPIRED_MAIL_SUBJECT:gsub('([%.%+%-%*%?%[%]%(%)%^%$])','%%%1'):gsub('%%s','(.+)')
-  for i=1,GetInboxNumItems() do
+  local loaded,total=GetInboxNumItems()
+  for i=1,loaded do
     local e=invoice(i)
     if not e and expiredPattern and GetInboxItem then
       local _,_,_,subject=GetInboxHeaderInfo(i)
@@ -96,7 +124,7 @@ local function readMail()
       if not seenMail[key] then seenMail[key]=true; record('invoice_observed',e) end
     end
   end
-  if ForeverMarketTools then ForeverMarketTools.mailSnapshot(sellerMail);ForeverMarketTools.account().returns=returned end
+  if ForeverMarketTools then ForeverMarketTools.mailSnapshot(sellerMail);ForeverMarketTools.account().mailPartial=total and total>loaded;ForeverMarketTools.account().returns=returned end
 end
 local function readSellSlot()
   if not GetAuctionSellItemInfo then return nil end
@@ -269,7 +297,7 @@ f:SetScript('OnEvent',function(_,event,...)
     end
   elseif event=='UI_ERROR_MESSAGE' then
     -- Never promote a request after an error or timeout.
-    pendingBuy=nil;pendingPost=nil;mailTake=nil;received={};f.marketBuy=nil;f.marketPost=nil
+    pendingBuy=nil;pendingPost=nil;received={};f.marketBuy=nil;f.marketPost=nil
   elseif event=='CHAT_MSG_SYSTEM' then
     local msg=...
     if msg==ERR_AUCTION_BID_PLACED and pendingBuy and pendingBuy.expires>=GetTime() then
@@ -285,7 +313,7 @@ f:SetScript('OnEvent',function(_,event,...)
     end
   elseif event=='PLAYER_LOGOUT' then ForeverMarketActivityExport=ForeverMarketJSON(ForeverMarketDesktopEvents())
   elseif event=='MAIL_SHOW' then mail=true;readMail()
-  elseif event=='MAIL_CLOSED' then mail=false;mailTake=nil;received={}
+  elseif event=='MAIL_CLOSED' then settleMoney();mail=false;received={}
   elseif event=='BAG_UPDATE_DELAYED' then
     local getCount=C_Item and C_Item.GetItemCount or GetItemCount
     if getCount then
@@ -309,18 +337,7 @@ f:SetScript('OnEvent',function(_,event,...)
     end
   elseif event=='MAIL_INBOX_UPDATE' then readMail()
   elseif event=='PLAYER_MONEY' then
-    if mailTake then
-      local batch=mailTake
-      mailTake=nil
-      local total=0
-      for _,entry in ipairs(batch.entries) do total=total+entry.amount end
-      if GetTime()<=batch.expires and GetMoney()-batch.before==total then
-        for _,entry in ipairs(batch.entries) do
-          local e={};for k,v in pairs(entry) do e[k]=v end
-          record('proceeds_collected',e)
-        end
-      end
-    end
+    settleMoney()
     if ah or mail then record('wallet',{name='Wallet balance changed'}) end
   end
 end)

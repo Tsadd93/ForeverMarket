@@ -5,6 +5,7 @@ local panel,caption,scroll,content
 local makeRow
 local rows,slots,quotes={}, {}, {}
 local readyRanks,quantities = {},{}
+local forceLookup={}
 local function options(s)
   return ForeverMarketTools and ForeverMarketTools.postOptions and ForeverMarketTools.postOptions(s.k.itemID) or {}
 end
@@ -101,8 +102,8 @@ local function bags()
     if d then
       local age=time()-d.at
       local at=GetTime()-age
-      if age>=0 and age<60 and (not quotes[s.key] or quotes[s.key].at<at) then
-        quotes[s.key]={floorPrice=d.floorPrice,floorQty=d.floorQty,at=at}
+      if age>=0 and age<60 and not forceLookup[s.key] and not quotes[s.key] then
+        quotes[s.key]={floorPrice=d.floorPrice,floorQty=d.floorQty,at=at,observed=d.at}
       end
     end
   end
@@ -136,7 +137,7 @@ local function quoteDetail(q)
   if q.timedOut then return q.average and 'Timeout / history avg' or 'No live response' end
   return q.average and 'No buyouts / history avg' or 'No buyouts or history'
 end
-local function fresh(q) return q and GetTime()-q.at<60 end
+local function fresh(q) return q~=nil end
 local allowHeld=false
 local function postingLimit(s,unitPrice,recheck)
   local qty=quantity(s)
@@ -166,6 +167,8 @@ local function postingLimit(s,unitPrice,recheck)
     if ForeverMarketTools and ForeverMarketTools.rule and ForeverMarketTools.rule(s.k.itemID)=='Margin' then
       minimum=math.ceil(minimum*(10000+ForeverMarketMarginBP())/10000)
     end
+    local target=ForeverMarketInvestmentTarget and ForeverMarketInvestmentTarget(s.k.itemID)
+    if target and unitPrice<target then return 'Investment target '..ForeverMarketCoins(target),true end
     if unitPrice<minimum then return 'Min '..ForeverMarketCoins(minimum),true end
   end
 end
@@ -245,6 +248,7 @@ local function paint()
     if s and fresh(q) and price(q,s) and quantity(s) then row.price:SetText(ForeverMarketCoins(price(q,s)*quantity(s))) end
     row.marketId=s and s.k.itemID
     row.priceReason=s and (s.holdReason or q and price(q,s) and quantity(s) and ('Post '..quantity(s)..' at '..ForeverMarketCoins(price(q,s))..' each / after cut '..ForeverMarketCoins(ForeverMarketSaleNet(quantity(s)*price(q,s)))..' / deposit '..ForeverMarketCoins(s.deposit or 0)) or nil)
+    if row.marketId and fresh(q) then row.priceReason=(row.priceReason or '')..' / '..(q.observed and date('%b %d %H:%M',q.observed) or 'This session')..' / Right-click item to recheck' end
     row.hold = s and s.holdReason ~= nil
     row.override=allowHeld and row.hold and s.canOverride and q.floorPrice~=nil
     if row.hold then
@@ -354,7 +358,7 @@ local function result(ev,arg)
       ForeverMarketTools.quotes()[variant or query.k.itemID]={empty=true,at=time()}
     end
   end
-  q.at=GetTime();quotes[query.key]=q;failures[query.key]=nil;query=nil;paint()
+  q.at=GetTime();q.observed=time();quotes[query.key]=q;forceLookup[query.key]=nil;failures[query.key]=nil;query=nil;paint()
 end
 local function lookup(s,attempt)
   local k = s.k
@@ -410,6 +414,12 @@ makeRow=function(i)
   local y=-6-(i-1)*rowHeight
   local row={name=label(content,12,y,225),detail=label(content,300,y,165),price=label(content,475,y,115)}
   row.hover=ForeverMarketHover(content,y+6,590,row)
+  row.hover:SetScript('OnMouseUp',function(_,mouse)
+    if mouse=='RightButton' and row.slot and not managing then
+      local key=row.slot.key;forceLookup[key]=true;quotes[key]=nil;failures[key]=nil;warming[key]=nil
+      paused=false;paint()
+    end
+  end)
   row.qty=CreateFrame('EditBox',nil,content,'InputBoxTemplate')
   row.qty:SetSize(42,20);row.qty:SetPoint('TOPLEFT',245,y+4);row.qty:SetAutoFocus(false)
   row.qty:SetFrameLevel((row.hover.GetFrameLevel and row.hover:GetFrameLevel() or 1)+1)
@@ -494,7 +504,7 @@ local function create()
     caption:SetText(managing and 'Protect items from Market Sell on this character.' or 'Edit Qty to change the stack total.')
     bags();paint()
   end)
-  button(panel,'Refresh',600,-6,75,function() paused=false;failures={};warming={};quotes={};query=nil;paint() end)
+  button(panel,'Refresh',600,-6,75,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
   ForeverMarketResults(panel,38,{{'Name',0},{'Qty',237},{'Bulk ask × supply',292},{'Stack total',467},{'Action',592}})
   scroll=CreateFrame('ScrollFrame','ForeverMarketSellScroll',panel,'UIPanelScrollFrameTemplate')
   scroll:SetPoint('TOPLEFT',0,-64)
@@ -506,7 +516,7 @@ local function create()
   scroll:SetScript('OnMouseWheel',function(self,delta)
     self:SetVerticalScroll(math.max(0,math.min(self:GetVerticalScrollRange(),self:GetVerticalScroll()-delta*rowHeight*3)))
   end)
-  panel:SetScript('OnShow',function() local scope=GetRealmName();if lastScope~=scope then quotes={};readyRanks={};quantities={};lastScope=scope end;failures={};warming={};bags();paint() end)
+  panel:SetScript('OnShow',function() local scope=table.concat({GetCurrentRegion(),GetRealmID and GetRealmID() or 0,GetRealmName(),UnitFactionGroup("player")},"|");if lastScope~=scope then ForeverMarketDB.sellPins=ForeverMarketDB.sellPins or {};ForeverMarketDB.sellPins[scope]=ForeverMarketDB.sellPins[scope] or {};quotes=ForeverMarketDB.sellPins[scope];readyRanks={};quantities={};lastScope=scope end;failures={};warming={};bags();paint() end)
   panel:SetScript('OnHide',function() query=nil;allowHeld=false;managing=false;manage:SetText('Blacklist');override:SetEnabled(true);override:SetText('Post held: off') end)
   panel:SetScript('OnUpdate',function(self,dt)
     if paused or managing then return end

@@ -90,7 +90,7 @@ frame:SetScript('OnUpdate',function()
     job.books[id]=d
     -- Replication identifies the base item; variant-specific prices still
     -- come from keyed browse and live item searches.
-    if id~=82800 then ForeverMarketObserve(tostring(id),d.low,qty) end
+    if id~=82800 then ForeverMarketObserve(tostring(id),d.low,qty,d.floorPrice) end
     job.lastID=id
   end
 end)

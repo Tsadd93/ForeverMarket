@@ -334,3 +334,25 @@ postNext.scripts.OnMouseDown();postNext.scripts.OnClick()
 assert(posts==first+1 and slots[2].stackCount==4)
 print('PASS: paged search returns each item once and Post next honors the group quantity and 24-hour deposit')
 
+
+dispatch('AUCTION_HOUSE_AUCTION_CREATED')
+local pin=outRow().quote;assert(pin and pin.floorPrice)
+clock=clock+180
+dispatch('BAG_UPDATE_DELAYED');assert(outRow().quote==pin and not outRow().needsCheck)
+tabs['Market Sell'].selectTab();assert(outRow().quote==pin)
+outRow().hover.scripts.OnMouseUp(nil,'RightButton');assert(outRow().needsCheck)
+print('PASS: Sell quote survives three minutes, bag refresh and tab reopen; right-click releases it')
+
+local a=M.account()
+a.sales[923]={qty=10,amount=2000,deposit=60}
+owned={{auctionID=923,status=0,quantity=7,buyoutAmount=200},{status=0,quantity=3,unitPrice=75},{status=1,quantity=1,bidder='Buyer',bidAmount=210,buyoutAmount=300}}
+local gross,_,_,_,sold=M.saleTotals();assert(gross==1625 and sold==210)
+local day=date('%Y-%m-%d',time())
+a.collected[day]=0;a.receiptsRebuilt=nil
+local function evt(kind,amount,gold)
+ return {kind=kind,character=UnitName('player'),realm=GetRealmName(),faction='Horde',region=1,at=time(),name='Ore',invoiceType='seller',amount=amount,gold=gold}
+end
+ForeverMarketActivity={events={evt('collection_requested',690,1000),evt('collection_requested',166,1000),evt('wallet',nil,1690),evt('proceeds_collected',166,1856),evt('wallet',nil,1856)}}
+M.restoreCollected();M.restoreCollected();assert(a.collected[day]==856)
+print('PASS: remaining listing quantities, bid settlement and idempotent wallet-history repair')
+

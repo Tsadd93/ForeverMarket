@@ -75,7 +75,7 @@ function ForeverMarketObserve(key,price,quantity,bulk)
   local now=time();local day=math.floor(now/86400)
   if r.day~=day then
     for old in pairs(r.h) do
-      if old<day-30 then r.h[old]=nil;r.l[old]=nil;r.a[old]=nil;r.stamp[old]=nil end
+      if old<day-60 then if r.floors then r.floors[old]=nil end;r.h[old]=nil;r.l[old]=nil;r.a[old]=nil;r.stamp[old]=nil end
     end
   end
   r.day=day;r.m=price
@@ -85,7 +85,7 @@ function ForeverMarketObserve(key,price,quantity,bulk)
   ForeverMarketDB[market]=ForeverMarketDB[market] or {}
   ForeverMarketDB[market][key]={price=price,quantity=quantity,at=now}
   if ForeverMarketTools and ForeverMarketTools.checkAlert then ForeverMarketTools.checkAlert(key,price) end
-  if bulk then r.bulk={price=bulk,at=now} end
+  if bulk then r.bulk={price=bulk,at=now};r.floors=r.floors or {};r.floors[day]=math.min(bulk,r.floors[day] or bulk) end
 end
 
 -- Read the JSON written by earlier versions without executing saved data.
@@ -170,4 +170,56 @@ function ForeverMarketTab(id,panel,text,title)
     PanelTemplates_SelectTab(b);ah:SetTitle(title);panel:Show()
   end
   b:SetScript('OnClick',panel.selectTab)
+end
+
+-- Use only observed daily bulk prices. Today's quote is checked separately.
+function ForeverMarketRecovery(floors,today)
+  if not floors then return end
+  local days={}
+  for day,p in pairs(floors) do
+    if type(day)=='number' and day<today and day>=today-60 and p>0 then days[#days+1]=day end
+  end
+  if #days<14 then return end
+  table.sort(days)
+  if days[#days]<today-2 then return end
+  local function median(i,n)
+    local prices={}
+    for j=i-n+1,i do prices[#prices+1]=floors[days[j]] end
+    table.sort(prices);return prices[math.ceil(n/2)]
+  end
+  local wins,trials,nextDay=0,0,0
+  for i=6,#days do
+    local day=days[i]
+    if day>=nextDay and day+3<today and days[i-5]>=day-8 then
+      local baseline=median(i-1,5)
+      if floors[day]<=baseline*.85 then
+        trials=trials+1;nextDay=day+4
+        for future=day+1,day+3 do
+          if floors[future] and floors[future]>=baseline*.95 then wins=wins+1;break end
+        end
+      end
+    end
+  end
+  if wins<3 or wins/trials<.8 then return end
+  local normal=median(#days,#days)
+  local recent=median(#days,5)
+  if recent<normal*.9 or days[#days-4]<today-8 then return end
+  local baseline=math.min(normal,recent)
+  return {entry=math.floor(baseline*.85),exit=math.floor(baseline*.95)-2,wins=wins,trials=trials}
+end
+function ForeverMarketSeedFloors()
+  local source=ForeverMarketActivity or ForeverMarketDB.__activity
+  if not source then return end
+  local realm,faction,region=GetRealmName(),UnitFactionGroup('player'),GetCurrentRegion()
+  local key=scope(realm,faction,region)
+  local seeded=ForeverMarketDB.floorMigration or {};ForeverMarketDB.floorMigration=seeded
+  if seeded[key] then return end
+  local db=ForeverMarketHistory();local oldest=math.floor(time()/86400)-60
+  for _,e in ipairs(source.events or {}) do
+    if e.kind=='price_depth' and e.realm==realm and e.faction==faction and e.region==region and e.floorPrice and e.floorPrice>0 and e.itemId then
+      local r=db[tostring(e.itemId)];local day=math.floor(e.at/86400)
+      if r and day>=oldest then r.floors=r.floors or {};r.floors[day]=math.min(r.floors[day] or e.floorPrice,e.floorPrice) end
+    end
+  end
+  seeded[key]=true
 end
