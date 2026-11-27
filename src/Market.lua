@@ -237,9 +237,37 @@ f:SetScript('OnEvent',function(_,event)
   elseif event=='PLAYER_LOGOUT' then assemble(false) end
 end)
 SLASH_FOREVERMARKET1='/fm'
+local commandHelp={
+  {'/fm, /fm dash, /fm dashboard','Open your dashboard and settings.'},
+  {'/fm help, /fm commands','Show this command list.'},
+  {'/fm tools, /fm home','Open the market tools hub.'},
+  {'/fm analytics','View your market analytics.'},
+  {'/fm farm','Track a farming route and compare its hourly returns.'},
+  {'/fm scan','Start a market price scan at the auction house.'},
+  {'/fm scanstatus','Print progress and filtering details for the latest Buy scan.'},
+  {'/fm results','Open market results.'},
+  {'/fm trials','Review scan trials.'},
+  {'/fm watch','Manage watched items.'},
+  {'/fm watchreport','Print recent Watch, Radar and benchmark results.'},
+  {'/fm manage','Manage your auctions while the auction house is open.'},
+  {'/fm preview','Preview your posting plan.'},
+  {'/fm session','Open your selling session.'},
+  {'/fm bags, /fm bags on, /fm bags off','Enable bag markers, or use off to disable them.'},
+  {'/fm benchmark [gold]','Run a benchmark in Market Buy with your fund or a test budget of 1, 5 or 50 gold.'},
+  {'/fm benchlist','Open the saved benchmark item list for import.'},
+  {'/fm export','Prepare market data for the desktop app.'},
+  {'/fm sync, /fm sync on, /fm sync off','Show live desktop sync status, or turn sync on or off.'},
+  {'/fm status','Show auction activity tracking status.'},
+  {'/fm version','Show addon version information.'},
+}
 SlashCmdList.FOREVERMARKET=function(msg)
   msg=(msg or ''):lower():match('^%s*(.-)%s*$')
   if msg=='' or msg=='dash' or msg=='dashboard' then ForeverMarketTools.openDashboard()
+  elseif msg=='help' or msg=='commands' then
+    print('|cffffd100Forever Market commands|r')
+    for _,entry in ipairs(commandHelp) do
+      print('|cffffd100'..entry[1]..'|r - '..entry[2])
+    end
   elseif msg=='analytics' then ForeverMarketTools.openAnalytics()
   elseif msg=='preview' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview')
   elseif msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()
@@ -299,5 +327,5 @@ SlashCmdList.FOREVERMARKET=function(msg)
   elseif msg=='bags' or msg=='bags on' or msg=='bags off' then
     if ForeverMarketBagToggle then ForeverMarketBagToggle(msg~='bags off')
     else print('Forever Market: bag module unavailable. Check startup messages.') end
-  else print('Forever Market: /fm scan, /fm scanstatus, /fm bags, /fm bags off, /fm status, /fm export') end
+  else print('Forever Market: command unavailable. Type /fm help for the command list.') end
 end
