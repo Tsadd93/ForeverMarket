@@ -249,7 +249,7 @@ local function paint()
     local s=ordered[i];row.slot=s
     row.itemRef=s and s.link;row.hover:SetShown(s~=nil)
     local q=s and quotes[s.key]
-    row.name:SetText(s and ForeverMarketRowIcon(s.k.itemID,s.link) or '')
+    ForeverMarketSetItemText(row.name,s and ForeverMarketRowIcon(s.k.itemID,s.link) or '')
     local raw=s and (quantities[s.stackKey] or tostring(s.commodity and math.min(options(s).size or s.count,s.count) or 1)) or ''
     if row.editKey~=(s and s.stackKey) then row.qty:ClearFocus() end
     row.editKey=s and s.stackKey
@@ -270,7 +270,7 @@ local function paint()
     if s and ForeverMarketTools and ForeverMarketTools.expiryWarning then
       local warning,loss=ForeverMarketTools.expiryWarning(C_Item.GetItemNameByID(s.k.itemID))
       if warning then
-        row.name:SetText('|cffffb347!|r '..ForeverMarketRowIcon(s.k.itemID,s.link))
+        ForeverMarketSetItemText(row.name,'|cffffb347!|r '..ForeverMarketRowIcon(s.k.itemID,s.link))
         row.priceReason=(row.priceReason or '')..' / '..warning..' / '..loss..' / next deposit '..ForeverMarketCoins(s.deposit or 0)..' / vendor stack '..ForeverMarketCoins((select(11,C_Item.GetItemInfo(s.link)) or 0)*(quantity(s) or s.count))
       end
     end
@@ -398,7 +398,7 @@ local function result(ev,arg)
     end
   end
   if not commodity and ForeverMarketTools and ForeverMarketTools.recordGearBook then ForeverMarketTools.recordGearBook(arg,n) end
-  caption:SetText("Checked "..query.link.." / "..n.." auction price rows.")
+  ForeverMarketSetItemText(caption,"Checked "..query.link.." / "..n.." auction price rows.")
   local q=ForeverMarketPriceDepth(levels)
   if q then
     if ForeverMarketTools then

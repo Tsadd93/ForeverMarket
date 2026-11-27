@@ -1,3 +1,4 @@
+dofile('src/ItemNames.lua')
 -- Lua 5.1 integration simulation. Every module below is the installable addon source.
 local frames,buttons,tabs={}, {}, {}
 local clock,who,wallet=100,'smith',100000

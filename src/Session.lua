@@ -25,7 +25,7 @@ function M.setPriceWatch(id,cap)
   local list=settings().watches
   if cap==0 then list[id]=nil;return 'Price watch removed.' end
   list[id]={cap=cap}
-  return 'Watching '..(C_Item.GetItemNameByID(id) or id)..' up to '..ForeverMarketCoins(cap)..' each.'
+  return 'Watching '..(C_Item.GetItemNameByID(id) or ('Item '..id))..' up to '..ForeverMarketCoins(cap)..' each.'
 end
 function M.watchRecipe(recipe)
   local inputs=M.inputs(recipe,1)
@@ -83,7 +83,7 @@ listener:SetScript('OnEvent',function(_,event)
   end
   if lowest or api.HasFullBrowseResults() then
     if lowest and lowest<=rule.cap and (not rule.ask or lowest<rule.ask or rule.ask>rule.cap) then
-      print('Forever Market: '..(C_Item.GetItemNameByID(id) or id)..' listed at '..ForeverMarketCoins(lowest)..' each.')
+      ForeverMarketPrintItemText('Forever Market: '..(C_Item.GetItemNameByID(id) or ('Item '..id))..' listed at '..ForeverMarketCoins(lowest)..' each.')
     end
     if settings().snipe and lowest and lowest<=rule.cap and not M.quote and GetTime()>=(quoteRetry[id] or 0) then
       local info=api.GetItemKeyInfo(bestKey)

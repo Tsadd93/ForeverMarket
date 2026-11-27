@@ -1,3 +1,4 @@
+dofile('src/ItemNames.lua')
 local now=100
 time=function()return now end;GetTime=time;GetCurrentRegion=function()return 1 end
 local events={}

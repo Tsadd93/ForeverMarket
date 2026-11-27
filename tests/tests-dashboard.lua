@@ -1,3 +1,4 @@
+dofile('src/ItemNames.lua')
 local all,events={},{}
 local function widget(kind,name,parent)
   local w={parent=parent,shown=true,kind=kind,name=name}

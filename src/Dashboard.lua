@@ -225,7 +225,7 @@ local function create(full,detached)
       r.frame:ClearAllPoints();r.frame:SetPoint('TOPLEFT',p,'TOPLEFT',141,-(withChart and 161 or 105)-(i-1)*24)
       r.frame:SetShown(entry~=nil)
       if entry then
-        r.title:SetText(entry.title);r.detail:SetText(entry.detail)
+        ForeverMarketSetItemText(r.title,entry.title);ForeverMarketSetItemText(r.detail,entry.detail)
         r.title:SetTextColor(entry.click and 1 or .88,entry.click and .82 or .88,entry.click and .44 or .88)
       end
     end

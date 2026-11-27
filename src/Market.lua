@@ -313,8 +313,8 @@ SlashCmdList.FOREVERMARKET=function(msg)
     print(('%d eligible · %d screened · %d detail requests · %d checked · %d unanswered'):format(r.candidates or 0,r.screened or 0,r.detailRequests or 0,r.checked or 0,r.unanswered or 0))
     print('Market: '..ForeverMarketVenueRealm()..' / '..UnitFactionGroup('player')..' / '..(r.firstBuy and ('first deal '..math.floor(r.firstBuy)..'s') or 'no verified deal recorded'))
     print(('Short history %d / no supply %d / over budget %d / spread %d'):format(r.thinHistory or 0,r.noSupply or 0,r.overBudget or 0,r.weakSpread or 0))
-    if r.repostExample then local e=r.repostExample;print('Resale check: '..(C_Item.GetItemNameByID(e.id) or tostring(e.id))..' / '..e.reason) end
-    for _,miss in ipairs(r.misses or {}) do print('Near miss: '..(C_Item.GetItemNameByID(math.abs(miss.id)) or tostring(miss.id))..' / '..miss.reason) end
+    if r.repostExample then local e=r.repostExample;ForeverMarketPrintItemText('Resale check: '..(C_Item.GetItemNameByID(e.id) or ('Item '..e.id))..' / '..e.reason) end
+    for _,miss in ipairs(r.misses or {}) do ForeverMarketPrintItemText('Near miss: '..(C_Item.GetItemNameByID(math.abs(miss.id)) or ('Item '..math.abs(miss.id)))..' / '..miss.reason) end
     if r.snapshotStatus then print('Snapshot: '..r.snapshotStatus) end
     if r.state=='closed' then print('Window closed before completion. Resume in Market Buy during this session.')
     elseif r.state=='complete' and not r.firstBuy then print('Completed with no qualifying purchase. Unanswered checks are excluded.') end

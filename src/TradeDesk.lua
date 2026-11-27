@@ -220,7 +220,7 @@ local function showResults()
   local pages=math.max(1,math.ceil(#results/#rows));page=math.max(1,math.min(page,pages))
   for i,row in ipairs(rows) do
     local r=results[(page-1)*#rows+i];row.data=r
-    row.name:SetText(r and r.name or '');row.price:SetText(r and ForeverMarketCoins(r.price)..' x '..r.qty or '')
+    ForeverMarketSetItemText(row.name,r and r.name or '');row.price:SetText(r and ForeverMarketCoins(r.price)..' x '..r.qty or '')
     row.star:SetShown(r~=nil);row.shop:SetShown(r~=nil);row.star:SetText(r and M.favorite(r.id) and 'Unwatch' or 'Watch')
   end
   for _,row in ipairs(rows) do
@@ -228,7 +228,7 @@ local function showResults()
     row.shop:SetText(active and (q.total and 'Confirm' or 'Quoting') or 'Get quote')
     row.reviewed=active and q.total and q or nil;row.reviewedTotal=active and q.total or nil
     if active and q.total then
-      status:SetText('Live offer: '..(q.link or row.data.name)..' x '..(q.key and 1 or q.n)..' / '..ForeverMarketCoins(q.total)..' total')
+      ForeverMarketSetItemText(status,'Live offer: '..(q.link or row.data.name)..' x '..(q.key and 1 or q.n)..' / '..ForeverMarketCoins(q.total)..' total')
     end
   end
   pager:SetText(page..' / '..pages)

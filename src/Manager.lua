@@ -32,7 +32,7 @@ function M.checkAlert(key,price)
   if price>cap then alerted[id]=nil;return end
   if alerted[id]==cap then return end
   alerted[id]=cap
-  print('Forever Market: '..nameOf(id)..' observed at '..ForeverMarketCoins(price)..'.')
+  ForeverMarketPrintItemText('Forever Market: '..nameOf(id)..' observed at '..ForeverMarketCoins(price)..'.')
 end
 function M.exportList()
   local parts={}
@@ -551,7 +551,7 @@ local function render()
   title:SetText(mode=='Fund' and ('Trading fund / '..fundSection) or mode=='Dip tests' and 'Forward tests / did a later bulk quote reach the original exit?' or mode=='Flips' and (flipIndex and 'Purchase details / click Fund flips to return' or 'Confirmed Market Buy purchases since 0.12.0') or mode=='Shopping' and ('Active shopping list: '..prefs().active) or mode=='Rules' and 'Item rules override category rules.' or mode=='Ledger' and ledgerItem and (ledgerItem..' / click Ledger to return') or mode=='Ledger' and 'Realized profit uses fund purchases matched to collected sales.' or ('My auctions / '..ForeverMarketVenueRealm()))
   for i,row in ipairs(rows) do
     local r=list[(page-1)*#rows+i];row.data=r
-    row.name:SetText(r and r.name or '');row.detail:SetText(r and r.detail or '')
+    ForeverMarketSetItemText(row.name,r and r.name or '');ForeverMarketSetItemText(row.detail,r and r.detail or '')
     row.action:SetShown(r and r.action~=nil or false);row.action:SetText(r and r.action or '')
   end
   for _,c in ipairs(controls) do c.frame:SetShown(c.mode==mode) end

@@ -56,7 +56,7 @@ local function render()
   panel.page:SetText(page..' / '..math.max(1,math.ceil(#list/#rows)))
   for i,row in ipairs(rows) do
     local d=list[(page-1)*#rows+i];row.data=d;row.action:SetShown(d~=nil)
-    row.name:SetText(d and ((d.key and (mode=='Build list' or mode=='Restock') and d.n..' x ' or '')..d.name) or '')
+    ForeverMarketSetItemText(row.name,d and ((d.key and (mode=='Build list' or mode=='Restock') and d.n..' x ' or '')..d.name) or '')
     row.info:SetText(d and d.info or '');row.value:SetText(d and d.value or '')
     if d then
       local q=M.quote
@@ -198,7 +198,10 @@ local function create()
           GameTooltip:AddLine('Output price observed '..math.floor((time()-e.at)/60)..' min ago')
         else GameTooltip:AddLine(d.info) end
         for id,n in pairs(M.inputs(r,d.n) or r.materials) do
-          GameTooltip:AddDoubleLine(C_Item.GetItemNameByID(id) or ('Item '..id),tostring(n*d.n))
+          local label=C_Item.GetItemNameByID(id) or ('Item '..id)
+          GameTooltip:AddDoubleLine(label,tostring(n*d.n))
+          local line=_G['GameTooltipTextLeft'..GameTooltip:NumLines()]
+          if line then ForeverMarketSetItemText(line,label) end
         end
       else GameTooltip:AddLine(d.info);GameTooltip:AddLine(d.value)
         if M.explain then M.explain(GameTooltip,d.id) end

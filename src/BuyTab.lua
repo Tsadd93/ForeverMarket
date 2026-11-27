@@ -787,7 +787,7 @@ local function render()
     local alerted=watchAlerts[id]
     if watchScan and (not alerted or p.v.low<alerted.price or p.n>alerted.n) then
       watchAlerts[id]={price=p.v.low,n=p.n}
-      print('Forever Market deal: '..(C_Item.GetItemNameByID(p.v.itemID or id) or tostring(id))..' x '..p.n..' at '..ForeverMarketCoins(p.v.low)..' each.')
+      ForeverMarketPrintItemText('Forever Market deal: '..(C_Item.GetItemNameByID(p.v.itemID or id) or ('Item '..(p.v.itemID or id)))..' x '..p.n..' at '..ForeverMarketCoins(p.v.low)..' each.')
     end
     for j=#(report and report.misses or {}),1,-1 do if report.misses[j].id==id then table.remove(report.misses,j) end end
     if not remembered[id] then displayOrder[#displayOrder+1]=id end
@@ -829,7 +829,7 @@ local function render()
       row.btn:SetText('Buy');row.btn:SetScript('OnEnter',function()if not benchmarkCash then prepare(row) end end);row.btn:SetScript('OnClick',function()buy(row)end);rows[i]=row
     end
     row.pick=list[i];row.itemRef=row.pick and (row.pick.v.link or "item:"..row.pick.v.id);row.hover:SetShown(row.pick~=nil);row.btn:SetShown(row.pick~=nil);row.btn:SetEnabled(not benchmarkCash and row.pick~=nil and not row.pick.inactive and not fund().pending)
-    row.name:SetText(row.pick and ForeverMarketRowIcon(row.pick.v.itemID or row.pick.v.id,row.pick.v.link or C_Item.GetItemNameByID(row.pick.v.id) or 'Item '..row.pick.v.id) or '')
+    ForeverMarketSetItemText(row.name,row.pick and ForeverMarketRowIcon(row.pick.v.itemID or row.pick.v.id,row.pick.v.link or C_Item.GetItemNameByID(row.pick.v.id) or 'Item '..row.pick.v.id) or '')
     local p=row.pick
     local live=p and quote and quote.id==p.v.id and quote.n==p.n and GetTime()-quote.at<8 and quote.total
     row.buyTotal=p and not p.inactive and (live or p.n*p.v.low)
@@ -875,9 +875,9 @@ local function render()
       progress=progress..(' | %d screened out | batch %d/%d'):format(screened,math.min(categoryIndex,#categories+1)-1,#categories)
       if browseFallback>0 then progress=progress..(' | %d batch failures'):format(browseFallback) end
     end
-    if search then detail:SetText('Looking up '..((search.id>0 and C_Item.GetItemNameByID(search.id)) or ('item '..search.id)))
+    if search then ForeverMarketSetItemText(detail,'Looking up '..((search.id>0 and C_Item.GetItemNameByID(search.id)) or ('item '..search.id)))
     elseif browse then detail:SetText('Browsing category')
-    else detail:SetText(scanWait or '') end
+    else ForeverMarketSetItemText(detail,scanWait or '') end
     if snapshotMode then
       progress=('Bulk / %d/%d resolved / %d unanswered'):format(math.min(totalLeads,screened+checked+unanswered),totalLeads,unanswered)
       if firstResult then progress=progress..(' / first buy %.1fs'):format(firstResult) end
@@ -891,7 +891,7 @@ local function render()
         if (pair[2] or 0)>most then reason,most=pair[1],pair[2] end
       end
       local ex=report.repostExample or report.misses and report.misses[1]
-      detail:SetText(reason..' ('..most..')'..(ex and (' / '..(C_Item.GetItemNameByID(ex.id) or ex.id)..': '..ex.reason) or '')) end
+      ForeverMarketSetItemText(detail,reason..' ('..most..')'..(ex and (' / '..(C_Item.GetItemNameByID(ex.id) or ('Item '..ex.id))..': '..ex.reason) or '')) end
   end
 end
 local function inspect(id)

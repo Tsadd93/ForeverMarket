@@ -26,8 +26,8 @@ function M.renderSessionPage(mode,ui)
     local preview=M.watchPreview
     local auction=q and q.auctionID
     local shown=q and q.total
-    if preview then summary:SetText('|cffffd100Commodity found|r / '..name(preview.id)..' / '..coins(preview.price)..' each') end
-    if q and shown then summary:SetText('|cffffd100Live quote|r for one '..(q.link or name(q.id))..' / '..coins(shown)..' total') end
+    if preview then ForeverMarketSetItemText(summary,'|cffffd100Commodity found|r / '..name(preview.id)..' / '..coins(preview.price)..' each') end
+    if q and shown then ForeverMarketSetItemText(summary,'|cffffd100Live quote|r for one '..(q.link or name(q.id))..' / '..coins(shown)..' total') end
     action(3,shown and 'Confirm purchase' or preview and 'Get firm quote' or 'Check live quote',function()
       if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
       local id=q and q.snipe and q.id or preview and preview.id or ui.itemID(field:GetText());local rule=M.session().watches[id]
@@ -114,7 +114,7 @@ function M.renderSessionPage(mode,ui)
     if not book then summary:SetText('Refresh the market snapshot.');return end
     local net,count,parts=M.disenchantValue(id);local resale=M.prices(id)
     hint:SetText('Estimated proceeds per item, including the configured auction fee and loss allowance.')
-    summary:SetText(name(id))
+    ForeverMarketSetItemText(summary,name(id))
     add('Buy one',coins(book.low),'Review',function()return ui.offer(id,book.low)end)
     add('Vendor',coins(select(11,C_Item.GetItemInfo(id))))
     add('Repost',coins(resale and (ForeverMarketSaleNet(resale)-ForeverMarketDepositLoss(1))))

@@ -52,7 +52,7 @@ local function create()
       local e=records[(page-1)*capacity+i]
       local name=e and (e.pet and ('Battle pet #'..e.pet) or C_Item.GetItemNameByID(e.id) or ('Item #'..e.id))
       if e and e.level then name=name..' ('..e.level..')' end
-      r[1]:SetText(e and (ForeverMarketRowIcon and ForeverMarketRowIcon(e.id,name) or name) or '')
+      ForeverMarketSetItemText(r[1],e and (ForeverMarketRowIcon and ForeverMarketRowIcon(e.id,name) or name) or '')
       r[2]:SetText(e and tostring(e.qty or '—') or '')
       r[3]:SetText(e and ForeverMarketCoins(e.low) or '')
       r[4]:SetText(e and (e.bulk and ForeverMarketCoins(e.bulk) or '—') or '')

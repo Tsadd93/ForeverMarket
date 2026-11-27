@@ -1,3 +1,4 @@
+dofile('src/ItemNames.lua')
 -- Exercise a complete native browse with no Auctionator, LibStub or desktop.
 date=os.date
 local clock,ready=0,false

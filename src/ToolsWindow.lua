@@ -29,7 +29,7 @@ local function action(i,label,fn,offer)
     local changed=self.pressedOffer~=nil and self.pressedOffer~=(offer or false)
     self.pressedOffer=nil
     if changed then message:SetText('Offer changed. Review the current total.');return end
-    local msg=fn();refresh();if msg then message:SetText(msg) end
+    local msg=fn();refresh();if msg then ForeverMarketSetItemText(message,msg) end
   end)
 end
 local function plot(id)
@@ -39,14 +39,14 @@ local function plot(id)
     peak=math.max(peak,v.high or 0,v.ask or 0,v.sale or 0);supply=math.max(supply,v.units or 0)
     if v.ask then first=first or v;last=v end;sold=(sold or 0)+(v.sold or 0)
   end
-  summary:SetText(itemName(id)..' / green: bulk ask range   gold: paid sales   blue: units (separate scale)')
+  ForeverMarketSetItemText(summary,itemName(id)..' / green: bulk ask range   gold: paid sales   blue: units (separate scale)')
   for i,v in ipairs(series) do
     local x=27+(i-1)*560/#series
     local function bar(index,value,cap,y,height,r,g,b,base)
       if not value then return end
       local t=chart[index]
       if not t then t=f:CreateTexture(nil,'ARTWORK');chart[index]=t end
-      t:ClearAllPoints();t:SetPoint('TOPLEFT',f,'TOPLEFT',x,y-height*value/cap)
+      t:ClearAllPoints();t:SetPoint('TOPLEFT',f,'TOPLEFT',x,y+math.max(3,height*value/cap))
       t:SetSize(math.max(3,490/#series),math.max(3,height*(value-(base or value))/cap))
       t:SetColorTexture(r,g,b,1);t:Show()
     end
@@ -242,7 +242,7 @@ local function chains()
     return M.saveSupplyPlan(chain)
   end)
   chain=chain or M.savedSupplyPlan()
-  summary:SetText(chain and (itemName(chain.id)..' x '..chain.n..' / planned cash '..coins(chain.cost)..' / buy finished '..coins(M.cost(chain.id,chain.n))) or 'Visit each crafter’s profession window to record learned recipes.')
+  ForeverMarketSetItemText(summary,chain and (itemName(chain.id)..' x '..chain.n..' / planned cash '..coins(chain.cost)..' / buy finished '..coins(M.cost(chain.id,chain.n))) or 'Visit each crafter’s profession window to record learned recipes.')
   for i,s in ipairs(chain and chain.steps or {}) do add(i..'. '..s.action..' '..itemName(s.id),s.n..' / '..(s.detail or '')..(s.cost and (' '..coins(s.cost)) or '')) end
 end
 local showFarmRoutes=false
@@ -374,9 +374,9 @@ refresh=function()
     end
     if row.bg then row.bg:SetShown(i<=per) end
     local d=i<=per and content[(page-1)*per+i]
-    row.left:SetText(d and (type(d.a)=='function' and d.a() or d.a) or '');row.right:SetText(d and (type(d.b)=='function' and d.b() or d.b) or '')
+    ForeverMarketSetItemText(row.left,d and (type(d.a)=='function' and d.a() or d.a) or '');ForeverMarketSetItemText(row.right,d and (type(d.b)=='function' and d.b() or d.b) or '')
     row.btn:SetShown(d and d.label and true or false)
-    if d and d.label then row.btn:SetText(d.label);row.btn:SetScript('OnClick',function()local msg=d.fn();refresh();if msg then message:SetText(msg) end end) end
+    if d and d.label then row.btn:SetText(d.label);row.btn:SetScript('OnClick',function()local msg=d.fn();refresh();if msg then ForeverMarketSetItemText(message,msg) end end) end
   end
 end
 selectTab=function(tab,value)

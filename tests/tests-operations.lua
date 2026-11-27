@@ -1,3 +1,4 @@
+dofile('src/ItemNames.lua')
 -- Isolated client adapter for the new standalone workflows.
 local now=1795719072
 time=function()return now end;GetTime=time
@@ -90,7 +91,8 @@ local surfaces={}
 local function widget(kind,_,parent)
  local w={shown=true,text='',kind=kind,parent=parent}
  surfaces[#surfaces+1]=w
- function w:SetPoint(_,x,y)if type(x)=='number' then self.x=x;self.y=-y end end
+ function w:SetPoint(_,x,y,dx,dy)if dx and dy then self.x=dx;self.y=-dy end;if type(x)=='number' then self.x=x;self.y=-y end end
+ function w:SetColorTexture()self.colored=true end
  function w:SetSize(width,height)self.width=width;self.height=height end
  function w:SetWidth(width)self.width=width end
  function w:SetHeight(height)self.height=height end
@@ -158,6 +160,15 @@ M.guildOpen=false;C_Container.GetContainerNumSlots=oldSlots;C_Container.GetConta
 print('PASS: shopping filter migration, exact targets, posting floors, caps, personal and guild logistics')
 dofile('src/ToolsWindow.lua')
 for _,tab in ipairs({'Basket','Mail & bank','Supply plan','History','Farming','Import'}) do M.openTools(tab,10) end
+M.openTools('History',10)
+local plotted=0
+for _,w in ipairs(surfaces) do
+ if w.kind=='Texture' and rawget(w,'colored') and w.shown and rawget(w,'y') and rawget(w,'height') then
+  assert(w.y>=223 and w.y+w.height<=334,'history bar crossed plot bounds')
+  plotted=plotted+1
+ end
+end
+assert(plotted>0)
 print('PASS: standalone window renders all six tabs including chart and paid invoices')
 
 fund.flips={{at=now-3600,n=4,sold=2,cost=100,net=80,lost=3,expected=40,name='Ore',firstPaid=now-1800},
