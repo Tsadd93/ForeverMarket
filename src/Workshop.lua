@@ -25,13 +25,14 @@ local function render()
   if not panel or not panel:IsVisible() then return end
   local a=M.account();list={}
   local restock=mode=='Restock' and M.restockContext()
-  if mode=='Materials' then
+  if mode=='Materials' or mode=='Build list' then
     for id,n in pairs(M.materials()) do
       local need=M.missing(id,n)
       list[#list+1]={id=id,name=C_Item.GetItemNameByID(id) or ('Item '..id),info=need..' missing / '..n..' reserved',
         value=need==0 and 'Covered' or money(M.cost(id,need)),score=need}
     end
-  else
+  end
+  if mode~='Materials' then
     local n=quantity() or 1
     for key,r in pairs(a.recipes) do
       if mode~='Build list' or a.build[key] then
@@ -45,18 +46,33 @@ local function render()
       end
     end
   end
-  table.sort(list,function(a,b) if a.score~=b.score then return a.score>b.score end return a.name<b.name end)
+  table.sort(list,function(a,b)
+    if mode=='Build list' then
+      if (a.id~=nil)~=(b.id~=nil) then return a.id~=nil end
+      if a.id and b.id then return a.id<b.id end
+    end
+    if a.score~=b.score then return a.score>b.score end return a.name<b.name end)
   page=math.min(page,math.max(1,math.ceil(#list/#rows)))
   panel.page:SetText(page..' / '..math.max(1,math.ceil(#list/#rows)))
   for i,row in ipairs(rows) do
     local d=list[(page-1)*#rows+i];row.data=d;row.action:SetShown(d~=nil)
-    row.name:SetText(d and (((mode=='Build list' or mode=='Restock') and d.n..' x ' or '')..d.name) or '')
+    row.name:SetText(d and ((d.key and (mode=='Build list' or mode=='Restock') and d.n..' x ' or '')..d.name) or '')
     row.info:SetText(d and d.info or '');row.value:SetText(d and d.value or '')
     if d then
       local q=M.quote
-      local active=q and q.id==d.id
-      row.action:SetText(mode=='Materials' and (active and (q.total and 'Confirm' or 'Quoting') or 'Get quote') or mode=='Build list' and 'Remove' or 'Add')
-      row.action:SetEnabled(mode=='Build list' or (mode=='Recipes' or mode=='Restock') and d.estimate and d.estimate.extra>0 and d.estimate.profit>0 or mode=='Materials' and d.score>0 and (not active or q.total~=nil) or false)
+      local active=d.id and q and q.id==d.id and not q.direct
+      row.offer=active and q or nil
+      row.total=active and q.total or nil
+      if active and q.total then
+        row.value:SetText(money(q.total));row.info:SetText(('Buy %d / %d needed'):format(q.key and 1 or q.n,d.score))
+      end
+      if d.id then
+        row.action:SetText(d.score==0 and 'Covered' or active and (q.total and 'Buy' or 'Checking') or 'Check')
+        row.action:SetEnabled(d.score>0 and (not active or q.total~=nil) or false)
+      else
+        row.action:SetText(mode=='Build list' and 'Remove' or 'Add')
+        row.action:SetEnabled(mode=='Build list' or d.estimate and d.estimate.extra>0 and d.estimate.profit>0 or false)
+      end
     end
   end
   return #list
@@ -64,7 +80,7 @@ end
 local function switch(nextMode)
   M.cancelMaterial();mode=nextMode;page=1
   local n=render()
-  notice:SetText(n==0 and (mode=='Recipes' and 'Open a learned profession window to capture its recipes.' or 'Your build list is empty.') or '')
+  notice:SetText(n==0 and (mode=='Recipes' and 'Open a learned profession window to capture its recipes.' or 'Your build list is empty.') or mode=='Build list' and 'Check a missing reagent for a live total, then click Buy.' or '')
 end
 local function create()
   local ah=AuctionHouseFrame
@@ -101,6 +117,10 @@ local function create()
     local row={name=text(panel,6,y,192),info=text(panel,206,y,236),value=text(panel,451,y,109)}
     row.action=button(panel,568,y+4,83,'Add',function()
       local d=row.data;if not d then return end
+      local pressed=row.pressed;row.pressed=nil
+      if pressed and (pressed.id~=(d.id or d.key) or pressed.offer~=row.offer or pressed.total~=row.total) then
+        notice:SetText('The row changed. Review the current offer.');return
+      end
       if mode=='Recipes' or mode=='Restock' then
         local n=quantity()
         if mode=='Restock' then
@@ -112,13 +132,19 @@ local function create()
         local e,why=M.estimate(M.account().recipes[d.key],total)
         if not e or e.extra<=0 or e.profit<=0 or not M.queue(d.key,total) then notice:SetText(why or 'Batch exceeds supply, profit or quantity limit.');return end
         notice:SetText('Added to build list.')
-      elseif mode=='Build list' then M.queue(d.key,0)
+      elseif d.key and mode=='Build list' then M.queue(d.key,0)
       else
         local ok,why
-        if M.quote and M.quote.id==d.id then ok,why=M.confirmMaterial() else ok,why=M.startMaterial(d.id) end
+        if row.offer then
+          if M.quote~=row.offer or not row.total or row.offer.total~=row.total then notice:SetText('Offer changed. Check again.');render();return end
+          ok,why=M.confirmMaterial()
+        else ok,why=M.startMaterial(d.id) end
         notice:SetText(why or 'Waiting for the auction house.')
       end
       render()
+    end)
+    row.action:SetScript('OnMouseDown',function()
+      local d=row.data;row.pressed=d and {id=d.id or d.key,offer=row.offer,total=row.total}
     end)
     row.hover=CreateFrame('Frame',nil,panel)
     row.hover:SetPoint('TOPLEFT',3,y+3);row.hover:SetSize(554,21);row.hover:EnableMouse(true)
@@ -313,12 +339,12 @@ events:SetScript('OnEvent',function(_,event,arg,second,third)
   elseif event=='UNIT_SPELLCAST_SUCCEEDED' and arg=='player' then M.completed(third)
   elseif (event=='ITEM_SEARCH_RESULTS_UPDATED' or event=='ITEM_SEARCH_RESULTS_ADDED') and M.quote and M.quote.key and arg and arg.itemID==M.quote.id and (arg.itemLevel or 0)==(M.quote.key.itemLevel or 0) and (arg.itemSuffix or 0)==(M.quote.key.itemSuffix or 0) and (arg.battlePetSpeciesID or 0)==(M.quote.key.battlePetSpeciesID or 0) then
     local r=M.materialOffer(arg)
-    if r then M.quote.auctionID=r.auctionID;M.quote.total=r.buyoutAmount;notice:SetText('Live buyout '..money(r.buyoutAmount)..' for one. Click Confirm.')
+    if r then M.quote.auctionID=r.auctionID;M.quote.total=r.buyoutAmount;notice:SetText('Live buyout '..money(r.buyoutAmount)..' for one. Review the purchase total.')
     else M.cancelMaterial();notice:SetText('No matching item at the expected price.') end
     render()
   elseif event=='COMMODITY_PRICE_UPDATED' and M.quote and not M.quote.key then
     local q=M.quote
-    if second and second>0 and second<=q.max and GetTime()-q.at<9 then q.total=second;notice:SetText('Live total '..money(second)..' for '..q.n..'. Click Confirm to buy.')
+    if second and second>0 and second<=q.max and GetTime()-q.at<9 then q.total=second;notice:SetText('Live total '..money(second)..' for '..q.n..'. Review the purchase total.')
     else
       M.cancelMaterial()
       local api=C_AuctionHouse

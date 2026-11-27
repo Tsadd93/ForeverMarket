@@ -15,6 +15,7 @@ local function frame(kind,parent)
     elseif type(c)=='number' then self.x,self.y=c,-d end
   end
   f.SetText=function(self,x)self.text=tostring(x)end
+  f.SetChecked=function(self,b)self.checked=b end
   f.GetText=function(self)return self.text end
   f.SetScript=function(self,k,fn)self.scripts[k]=fn end
   f.HookScript=f.SetScript
@@ -121,8 +122,16 @@ loadPart('Workshop');dispatch('AUCTION_HOUSE_SHOW')
 M.openMaterials()
 assert(M.startMaterial(mat));dispatch('COMMODITY_PRICE_UPDATED',2001,4002)
 assert(not M.quote and confirms==0)
-assert(M.startMaterial(mat));dispatch('COMMODITY_PRICE_UPDATED',2000,4000)
-assert(M.confirmMaterial());assert(not M.confirmMaterial() and confirms==1)
+local function craftButton(caption)
+  for _,b in ipairs(buttons) do if b.text==caption and b:IsVisible() then return b end end
+end
+craftButton('Build list').scripts.OnClick()
+assert(craftButton('Remove') and craftButton('Check'))
+craftButton('Check').scripts.OnClick()
+assert(confirms==0 and M.quote.id==mat)
+dispatch('COMMODITY_PRICE_UPDATED',2000,4000)
+local buyReagent=assert(craftButton('Buy'));buyReagent.scripts.OnMouseDown();buyReagent.scripts.OnClick()
+assert(not M.confirmMaterial() and confirms==1)
 ForeverMarketFundActivity('purchase',{itemId=mat,quantity=2,total=4000})
 assert(ForeverMarketFundCash()==6000 and M.account().transit[mat]==2 and M.missing(mat,2)==0)
 M.onActivity('purchased_item_received',{itemId=mat,quantity=2});bags[mat]=2
@@ -194,6 +203,11 @@ loadPart('SellTab');dispatch('AUCTION_HOUSE_SHOW')
 M.queue('s1',1)
 tabs['Market Sell'].selectTab()
 assert(seenRows[1].slot.k.itemID==out and seenRows[2].detail.text=='Reserved for crafting')
+local keep=seenRows[1].keep
+keep.scripts.OnMouseDown(keep);keep.scripts.OnClick(keep)
+assert(keep.checked and seenRows[1].slot.k.itemID==out and not seenRows[1].post.enabled)
+seenRows[1].post.scripts.OnClick();assert(posts==0 and ForeverMarketPostingPreview().ready==0)
+keep.scripts.OnClick(keep);assert(not keep.checked and seenRows[1].post.enabled)
 seenRows[2].post.scripts.OnClick();assert(posts==0)
 seenRows[1].post.scripts.OnMouseDown();seenRows[1].post.scripts.OnClick();assert(posts==1)
 M.queue('s1',0)

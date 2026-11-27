@@ -54,7 +54,6 @@ local function inspect(bag,slot)
     count=info.stackCount or 1,valid=k and (status==Enum.ItemCommodityStatus.Commodity or status==Enum.ItemCommodityStatus.Item),
     locked=info.isLocked,commodity=status==Enum.ItemCommodityStatus.Commodity}
 end
-local managing=false
 local function blacklist()
   ForeverMarketDB=ForeverMarketDB or {}
   local lists=ForeverMarketDB.__sellBlacklist or {}
@@ -67,26 +66,16 @@ local function blacklist()
 end
 local function bags()
   slots={}
-  local protected=blacklist()
-  local seen={}
   for bag=0,(NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
     for slot=1,C_Container.GetContainerNumSlots(bag) do
       local s=inspect(bag,slot)
-      if s and s.valid and (managing and not seen[s.k.itemID] or not managing and not protected[s.k.itemID]) then
-        seen[s.k.itemID]=true
+      if s and s.valid then
         s.stackKey = table.concat({bag, slot, s.key, s.link}, '/')
         slots[#slots+1]=s
       end
     end
   end
-  if managing then
-    for id,link in pairs(protected) do
-      if not seen[id] then slots[#slots+1]={k={itemID=id},link=link,stackKey='saved/'..id} end
-    end
-    table.sort(slots,function(a,b)
-      return a.k.itemID<b.k.itemID
-    end)
-  elseif ForeverMarketFundHolding then
+  if ForeverMarketFundHolding then
     table.sort(slots,function(a,b)
       local x=a.k and ForeverMarketFundHolding(a.k.itemID) or 0
       local y=b.k and ForeverMarketFundHolding(b.k.itemID) or 0
@@ -202,20 +191,7 @@ local function postingLimit(s,unitPrice,recheck)
   end
 end
 local function paint()
-  if managing then
-    local protected=blacklist()
-    for i,row in ipairs(rows) do
-      local s=slots[i]
-      row.marketId=nil;row.priceReason=nil;row.slot=s;row.itemRef=s and (s.link:find("|H",1,true) and s.link or "item:"..s.k.itemID);row.override=false;row.needsCheck=false;row.quote=nil
-      row.name:SetText(s and ForeverMarketRowIcon(s.k.itemID,s.link) or '')
-      row.qty:Hide();row.price:SetText('')
-      local keep=s and protected[s.k.itemID]
-      row.detail:SetText(s and (keep and 'Blacklisted' or 'Allowed') or '')
-      row.post:SetText(keep and 'Remove' or 'Protect')
-      row.post:SetShown(s~=nil);row.hover:SetShown(s~=nil);row.post:SetEnabled(s~=nil)
-    end
-    return
-  end
+  local protected=blacklist()
   local ready, waiting, held = {}, {}, {}
   local editingOrder={}
   for i,row in ipairs(rows) do if row.slot then editingOrder[row.slot.stackKey]=i end end
@@ -272,7 +248,7 @@ local function paint()
     row.editKey=s and s.stackKey
     if row.qty:GetText()~=raw then row.qty:SetText(raw) end
     row.qty:SetShown(s~=nil);row.qty:SetEnabled(s and s.commodity or false)
-    row.detail:SetText(s and (s.locked and 'Item locked' or fresh(q) and quoteDetail(q) or (failures[s.key] or 0)>=2 and 'No live response' or query and query.key==s.key and 'Looking up…' or 'Queued') or '')
+    row.detail:SetText(s and (s.locked and 'Item locked' or fresh(q) and quoteDetail(q) or (failures[s.key] or 0)>=2 and 'No live response' or query and query.key==s.key and 'Looking upâ€¦' or 'Queued') or '')
     row.price:SetText(s and s.valid and fresh(q) and (price(q,s) or q.average) and ForeverMarketCoins(price(q,s) or q.average) or '')
     if s and fresh(q) and price(q,s) and quantity(s) then row.price:SetText(ForeverMarketCoins(price(q,s)*quantity(s))) end
     row.marketId=s and s.k.itemID
@@ -291,23 +267,25 @@ local function paint()
         row.priceReason=(row.priceReason or '')..' / '..warning..' / '..loss..' / next deposit '..ForeverMarketCoins(s.deposit or 0)..' / vendor stack '..ForeverMarketCoins((select(11,C_Item.GetItemInfo(s.link)) or 0)*(quantity(s) or s.count))
       end
     end
+    local keep=s and protected[s.k.itemID]
+    row.keep:SetShown(s~=nil);row.keep:SetChecked(keep and true or false)
     row.post:SetShown(s~=nil)
     row.needsCheck=s and (not fresh(q) or q.timedOut)
-    row.post:SetText(row.needsCheck and 'Check' or row.override and (nativeFallback and 'Sell…' or 'Post held') or nativeFallback and 'Sell…' or 'Post')
+    row.post:SetText(row.needsCheck and 'Check' or row.override and (nativeFallback and 'Sellâ€¦' or 'Post held') or nativeFallback and 'Sellâ€¦' or 'Post')
     row.post:SetEnabled((not row.hold or row.override) and not pending and s and not s.locked and (row.needsCheck or q and price(q,s)~=nil) or false)
+    if keep then row.hold=true;row.override=false;row.needsCheck=false;row.detail:SetText("Protected");row.post:SetText("Post");row.post:SetEnabled(false) end
     row.quote=q;row.reviewedUnit=s and q and price(q,s)
   end
 end
 local post
 function ForeverMarketPostingPreview()
-  if managing then return nil,'Finish editing protected items first.' end
   if not panel or not panel:IsVisible() then return nil,'Open Market Sell at an auctioneer to check your bags.' end
   local s={ready=0,hold=0,checking=0,rows={},gross=0}
   for _,r in ipairs(rows) do
     local slot=r.slot
     if slot then
       local n=quantity(slot);local p=r.quote and price(r.quote,slot)
-      local state=r.needsCheck and 'Checking price' or slot.locked and 'Item locked' or slot.holdReason
+      local state=blacklist()[slot.k.itemID] and 'Protected' or r.needsCheck and 'Checking price' or slot.locked and 'Item locked' or slot.holdReason
       if state then
         if r.needsCheck then s.checking=s.checking+1 else s.hold=s.hold+1 end
       elseif n and p then state='Post '..n..' for '..ForeverMarketCoins(n*p);s.ready=s.ready+1;s.gross=s.gross+n*p
@@ -330,7 +308,7 @@ function ForeverMarketPostingPreview()
 end
 post=function(row)
   local old=row.slot;if (row.hold and not row.override) or pending or not old then return end
-  if managing or blacklist()[old.k.itemID] then return end
+  if blacklist()[old.k.itemID] then return end
   local s=inspect(old.bag,old.slot);local q=row.quote
   if not s or not s.valid or s.locked or s.link~=old.link or s.key~=old.key or s.count~=old.count or not fresh(q) or not price(q,s) or q~=quotes[s.key] then
     bags();paint();caption:SetText('Bag or price changed. Review the refreshed row.');return
@@ -367,7 +345,7 @@ post=function(row)
   if C_Timer then C_Timer.After(8,function()
     if pending==attempt then
       pending=nil;pendingStack=nil;nativeFallback=true
-      report('Post unconfirmed. Check Auctions before using Sell…');paint()
+      report('Post unconfirmed. Check Auctions before using Sellâ€¦');paint()
     end
   end) end
   do
@@ -376,7 +354,7 @@ post=function(row)
       if api.PostCommodity(s.loc,duration(s),qty,p) then AuctionHouseFrame.CommoditiesSellFrame:CachePendingPost(s.loc,duration(s),qty,p) end
     elseif api.PostItem(s.loc,duration(s),qty,nil,p) then AuctionHouseFrame.ItemSellFrame:CachePendingPost(s.loc,duration(s),qty,nil,p) end
   end
-  if pending then caption:SetText('Waiting for auction confirmation…');paint() end
+  if pending then caption:SetText('Waiting for auction confirmationâ€¦');paint() end
 end
 local function result(ev,arg)
   if not query or not arg then return end
@@ -413,7 +391,7 @@ local function result(ev,arg)
     end
   end
   if not commodity and ForeverMarketTools and ForeverMarketTools.recordGearBook then ForeverMarketTools.recordGearBook(arg,n) end
-  caption:SetText("Checked "..query.link.." · "..n.." auction price rows.")
+  caption:SetText("Checked "..query.link.." Â· "..n.." auction price rows.")
   local q=ForeverMarketPriceDepth(levels)
   if q then
     if ForeverMarketTools then
@@ -475,7 +453,7 @@ local function tick(_,dt)
   for attempt=0,1 do
   for offset=0,#slots-1 do
     local s=slots[(first-1+offset)%#slots+1]
-    if s and s.valid and not fresh(quotes[s.key]) and (failures[s.key] or 0)==attempt then
+    if s and s.valid and not blacklist()[s.k.itemID] and not fresh(quotes[s.key]) and (failures[s.key] or 0)==attempt then
       if lookup(s,attempt) then return end
     end
   end
@@ -484,14 +462,30 @@ end
 makeRow=function(i)
   local y=-6-(i-1)*rowHeight
   ForeverMarketRowArt(content,y+5,672,i)
-  local row={name=label(content,12,y,225),detail=label(content,300,y,165),price=label(content,475,y,115)}
+  local row={name=label(content,32,y,201),detail=label(content,300,y,165),price=label(content,475,y,115)}
   row.hover=ForeverMarketHover(content,y+6,590,row)
   row.hover:SetScript('OnMouseUp',function(_,mouse)
-    if mouse=='RightButton' and row.slot and not managing then
+    if mouse=='RightButton' and row.slot and not blacklist()[row.slot.k.itemID] then
       local key=row.slot.key;forceLookup[key]=true;quotes[key]=nil;failures[key]=nil;warming[key]=nil
       paused=false;paint()
     end
   end)
+  row.keep=CreateFrame('CheckButton',nil,content,'UICheckButtonTemplate')
+  row.keep:SetSize(23,23);row.keep:SetPoint('TOPLEFT',5,y+6)
+  row.keep:SetFrameLevel(row.hover:GetFrameLevel()+1)
+  row.keep:SetScript('OnMouseDown',function(self)self.item=row.slot and row.slot.k.itemID end)
+  row.keep:SetScript('OnClick',function(self)
+    local id=row.slot and row.slot.k.itemID
+    if id and (not self.item or self.item==id) then
+      local protected=blacklist()
+      if protected[id] then protected[id]=nil else protected[id]=row.slot.link end
+    end
+    self.item=nil;paint()
+  end)
+  row.keep:SetScript('OnEnter',function(self)
+    GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:AddLine('Protect every stack of this item from Market Sell.');GameTooltip:Show()
+  end)
+  row.keep:SetScript('OnLeave',function()GameTooltip:Hide()end)
   row.qty=CreateFrame('EditBox',nil,content,'InputBoxTemplate')
   row.qty:SetSize(42,20);row.qty:SetPoint('TOPLEFT',245,y+4);row.qty:SetAutoFocus(false)
   row.qty:SetFrameLevel((row.hover.GetFrameLevel and row.hover:GetFrameLevel() or 1)+1)
@@ -509,16 +503,9 @@ makeRow=function(i)
   row.post=button(content,'Post',600,y+5,62,function()
     local pressed = row.pressed
     row.pressed = nil
-    if pressed and (row.pressedManaging~=managing or not row.slot or pressed.stackKey ~= row.slot.stackKey or pressed.count ~= row.slot.count or row.pressedQuote ~= row.quote or row.pressedCheck ~= row.needsCheck or row.pressedQty~=quantity(row.slot)) then
+    if pressed and (not row.slot or pressed.stackKey ~= row.slot.stackKey or pressed.count ~= row.slot.count or row.pressedQuote ~= row.quote or row.pressedCheck ~= row.needsCheck or row.pressedQty~=quantity(row.slot)) then
       caption:SetText('The row changed. Review the item and click again.')
       return
-    end
-    if managing then
-      if not row.slot then return end
-      local protected=blacklist()
-      local id=row.slot.k.itemID
-      if protected[id] then protected[id]=nil else protected[id]=row.slot.link end
-      bags();paint();return
     end
     if row.needsCheck and row.slot then
       failures[row.slot.key]=nil
@@ -530,7 +517,6 @@ makeRow=function(i)
   end)
   row.post:SetScript('OnMouseDown',function()
     row.pressedQty=row.slot and quantity(row.slot)
-    row.pressedManaging=managing
     row.pressed, row.pressedQuote, row.pressedCheck = row.slot, row.quote, row.needsCheck
   end)
   row.post:SetScript('OnEnter',function(self)
@@ -551,12 +537,12 @@ local lastScope
 local function create()
   if panel or not AuctionHouseFrame then return end
   panel=CreateFrame('Frame',nil,AuctionHouseFrame);panel:SetPoint('TOPLEFT',14,-62);panel:SetPoint('BOTTOMRIGHT',-12,38);panel:Hide()
-  caption=label(panel,12,-32,660);caption:SetText('Edit Qty or post the next ready stack.')
+  caption=label(panel,12,-32,660);caption:SetText('Check an item to protect every stack. Edit Qty to post a partial stack.')
   button(panel,'Price: '..(ForeverMarketDB.matchBulk and 'Match bulk' or 'Undercut'),8,-6,190,function(self)
     ForeverMarketDB.matchBulk=not ForeverMarketDB.matchBulk
     self:SetText('Price: '..(ForeverMarketDB.matchBulk and 'Match bulk' or 'Undercut'));paint()
   end)
-  local override=button(panel,'Post held: off',432,-6,118,function(self)
+  local override=button(panel,'Post held: off',318,-6,118,function(self)
     allowHeld=not allowHeld;self:SetText(allowHeld and 'Post held: on' or 'Post held: off');paint()
   end)
   local nextRow,nextKey,nextQuote,nextQty
@@ -567,22 +553,15 @@ local function create()
   end)
   nextButton:SetScript('OnMouseDown',function()
     nextRow=nil
-    if not managing then for _,row in ipairs(rows) do
+    for _,row in ipairs(rows) do
       if row.slot and not row.hold and not row.needsCheck and not row.slot.locked and row.quote and price(row.quote,row.slot) then
         nextRow=row;nextKey=row.slot.stackKey;nextQuote=row.quote;nextQty=quantity(row.slot);break
       end
-    end end
+    end
   end)
-  local manage=button(panel,'Blacklist',318,-6,110,function(self)
-    managing=not managing;query=nil
-    self:SetText(managing and 'Done' or 'Blacklist')
-    override:SetEnabled(not managing)
-    caption:SetText(managing and 'Protect items from Market Sell on this character.' or 'Edit Qty to change the stack total.')
-    bags();paint()
-  end)
-  button(panel,'Preview',552,-6,65,function()if not managing and ForeverMarketTools and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview') end end)
-  button(panel,'Refresh',619,-6,66,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
-  ForeverMarketResults(panel,56,{{'Name',0},{'Qty',237},{'Bulk ask × supply',292},{'Stack total',467},{'Action',592}})
+  button(panel,'Preview',440,-6,65,function()if ForeverMarketTools and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview') end end)
+  button(panel,'Refresh',510,-6,66,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
+  ForeverMarketResults(panel,56,{{'Name',0},{'Qty',237},{'Bulk ask Ã— supply',292},{'Stack total',467},{'Action',592}})
   scroll=CreateFrame('ScrollFrame','ForeverMarketSellScroll',panel,'UIPanelScrollFrameTemplate')
   scroll:SetPoint('TOPLEFT',0,-82)
   scroll:SetPoint('BOTTOMRIGHT',-30,8)
@@ -594,9 +573,9 @@ local function create()
     self:SetVerticalScroll(math.max(0,math.min(self:GetVerticalScrollRange(),self:GetVerticalScroll()-delta*rowHeight*3)))
   end)
   panel:SetScript('OnShow',function() local scope=table.concat({GetCurrentRegion(),GetRealmID and GetRealmID() or 0,GetRealmName(),UnitFactionGroup("player")},"|");if lastScope~=scope then ForeverMarketDB.sellPins=ForeverMarketDB.sellPins or {};ForeverMarketDB.sellPins[scope]=ForeverMarketDB.sellPins[scope] or {};quotes=ForeverMarketDB.sellPins[scope];readyRanks={};quantities={};lastScope=scope end;failures={};warming={};bags();paint() end)
-  panel:SetScript('OnHide',function() query=nil;allowHeld=false;managing=false;manage:SetText('Blacklist');override:SetEnabled(true);override:SetText('Post held: off') end)
+  panel:SetScript('OnHide',function() query=nil;allowHeld=false;override:SetEnabled(true);override:SetText('Post held: off') end)
   panel:SetScript('OnUpdate',function(self,dt)
-    if paused or managing then return end
+    if paused then return end
     local ok,err=pcall(tick,self,dt)
     if not ok then
       if query then failures[query.key]=2;query=nil end
@@ -612,7 +591,7 @@ if api.RequestMoreItemSearchResults then pcall(events.RegisterEvent, events, 'IT
 events:SetScript('OnEvent',function(_,ev,arg,msg)
   if ev=='AUCTION_HOUSE_SHOW' then create();return end
   if (ev=='ADDON_ACTION_BLOCKED' or ev=='ADDON_ACTION_FORBIDDEN') and pending then
-    pending=nil;pendingStack=nil;nativeFallback=true;report('WoW blocked the action. Use Sell… to open Blizzard Sell.');paint();return
+    pending=nil;pendingStack=nil;nativeFallback=true;report('WoW blocked the action. Use Sellâ€¦ to open Blizzard Sell.');paint();return
   end
   if not panel or not panel:IsVisible() then return end
   if ev=='BAG_UPDATE_DELAYED' then bags();paint()

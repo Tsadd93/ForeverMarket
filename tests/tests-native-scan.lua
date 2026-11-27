@@ -54,4 +54,9 @@ for id=3,13 do ForeverMarketObserve(tostring(id),50,id) end
 panel:OnShow();assert(findText('Page 1 / 2') and findText('Item 13'))
 findText('Next'):OnClick();assert(findText('Page 2 / 2') and not findText('Item 13'))
 findText('Previous'):OnClick();assert(findText('Item 13'))
+clock=30
+ForeverMarketSnapshot=function()return {at=0,rows=2,books={}} end
+ForeverMarketScan();panel:OnUpdate();assert(sends==2)
+events:OnEvent('AUCTION_HOUSE_BROWSE_RESULTS_UPDATED')
+assert(findText('Scan complete / 2 item prices saved.'))
 print('PASS: standalone native tab, throttling, pagination, gear and commodity discovery')

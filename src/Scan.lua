@@ -10,7 +10,8 @@ local function begin()
   if not opened or not panel then print('Forever Market: open the auction house first.');return end
   if not panel:IsVisible() then panel.selectTab() end
   query={searchString='',filters={},sorts={},itemClassFilters={}}
-  step='snapshot';count=0;last=GetTime()
+  step=ForeverMarketReadySnapshot and ForeverMarketReadySnapshot() and 'start' or 'snapshot'
+  count=0;last=GetTime()
   setScanning(true)
   status:SetText('Waiting for the auction house…')
 end
@@ -103,20 +104,23 @@ local function create()
       ('%s  /  %d items by supply'):format(snapshot and 'Market snapshot' or 'Saved observations',#records))
     paint()
   end
-  panel:SetScript('OnShow',function()refreshTable(ForeverMarketReadySnapshot and ForeverMarketReadySnapshot())end)
+  panel:SetScript('OnShow',function()refreshTable()end)
   panel:SetScript('OnHide',function() if query then finish('Scan stopped.') end end)
   panel:SetScript('OnUpdate',function()
     if not query then return end
     if step=='snapshot' then
       local data,state
       if ForeverMarketSnapshot then data,state=ForeverMarketSnapshot() end
-      if data then refreshTable(data);finish(('Snapshot ready · %d auction rows · %ds old'):format(data.rows,GetTime()-data.at));return end
+      if data and data.at>=last then refreshTable(data);finish(('Snapshot ready · %d auction rows · %ds old'):format(data.rows,GetTime()-data.at));return end
       if state=='pending' or state=='throttled' and GetTime()-last<20 then
         local done,total
         if ForeverMarketSnapshotProgress then done,total=ForeverMarketSnapshotProgress() end
         status:SetText(total and ('Reading auctions  /  %d of %d rows'):format(done,total) or 'Waiting for the realm snapshot…');return
       end
-      step='start';last=GetTime()
+      step='start';last=GetTime();status:SetText('Requesting fresh auction listings…')
+    end
+    if step and not api.IsThrottledMessageSystemReady() then
+      status:SetText('Waiting for the auction house to accept the next request…');last=GetTime();return
     end
     if GetTime()-last>20 then finish('Auction house timed out. Click Scan market to retry.');return end
     if step and api.IsThrottledMessageSystemReady() then

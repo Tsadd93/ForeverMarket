@@ -127,3 +127,11 @@ Update the version in `ForeverMarket.toc` alongside addon changes on main. The r
 * **My Auctions > Manage auctions > Scan cancels** walks your active buyouts in a stable order. **Cancel shown** submits one cancellation. The status shows the competitor's unit price and the deposit at risk. The queue waits for removal, then advances. It skips bids, unknown deposits, positive cancellation fees, mismatched variants, incomplete or unanswered searches and relists below the vendor threshold. A shared book serves consecutive matching listings for up to ten seconds. The result counts removed and skipped listings.
 * Addon authors can declare `## OptionalDeps: ForeverMarket` and call `ForeverMarketAPI.GetPrice(itemIDOrLink, maxAgeSeconds)`. It returns the base item's unit market price in copper, observation timestamp and source, or nil if unavailable. The optional age limit applies to historical and starter estimates too. Linked gear returns a base-item estimate. GECTemplate bridge consumers can use `{forevermarket.price(2589)}` and `{forevermarket.age(2589)}`. Other consumers can add Forever Market to their price-provider list.
 * Imported formulas can reference TSM shopping, auctioning and sniper operation prices plus supported purchase, sale, material and vendor sources when the TSM addon supplies them. Missing inputs remain unresolved. Standalone players can keep using native presets and local history.
+
+### Selling, buying reagents and refreshing prices
+
+On Market Sell, check the box beside an item to protect every stack of that item on this character. Uncheck it on any stack to allow posting again. Post next and Post held both respect protection.
+
+On Craft > Build list, the reagent rows combine requirements across queued recipes. Click Check beside a missing reagent, review the live quantity and total, then click Buy. Covered reagents stay visible. The recipe rows still let you remove a planned craft.
+
+Click Scan market for a fresh pass. When the realm snapshot is on cooldown, the addon requests current browse results and saves the observed asks and supply. The server controls how quickly those results arrive.
