@@ -355,6 +355,56 @@ function M.historySeries(id,days)
   return series
 end
 
+-- Baseline gathering leads. A recorded route takes precedence for its item.
+local farmLeads={
+  [2770]='Mining: copper veins', [2771]='Mining: Hillsbrad Foothills',
+  [2772]='Mining: iron deposits', [3858]='Mining: The Hinterlands',
+  [10620]='Mining: thorium veins',
+  [2589]='Loot: low-level humanoids', [2592]='Loot: humanoids (wool)',
+  [4306]='Loot: humanoids (silk)', [4338]='Loot: humanoids (mageweave)',
+  [14047]='Loot: high-level humanoids',
+  [2318]='Skinning: low-level beasts', [2319]='Skinning: medium leather',
+  [4234]='Skinning: heavy leather', [4304]='Skinning: thick leather',
+  [8170]='Skinning: high-level beasts',
+}
+for _,id in ipairs({765,2447,2449,785,2450,2452,2453,3820,3355,3356,3357,
+  3358,3818,3819,3821,4625,8831,8836,8838,8839,8845,8846,13463,13464,
+  13465,13466,13467,13468}) do farmLeads[id]='Herbalism: gather this herb' end
+
+function M.farmTargets()
+  local leads={}
+  for id,lead in pairs(farmLeads) do leads[id]=lead end
+  for _,session in ipairs(M.account().farming or {}) do
+    for id,item in pairs(session.items or {}) do
+      if tonumber(id) and (item.n or 0)>0 then leads[tonumber(id)]='Recorded: '..session.label end
+    end
+  end
+  local history=ForeverMarketHistory()
+  local today=math.floor(time()/86400)
+  local rows={}
+  for id,lead in pairs(leads) do
+    local h=history[tostring(id)]
+    if h and h.day and h.day>=today-2 and h.day<=today and h.m and h.m>0 then
+      local prices={}
+      local latest=h.floors and h.floors[h.day] or h.m
+      for day=today-6,today do
+        local price=h.floors and h.floors[day] or h.l and h.l[day]
+        if price and price>0 then prices[#prices+1]=price end
+      end
+      table.sort(prices)
+      local n=#prices
+      local reference=n>0 and (prices[math.ceil(n/2)]+prices[math.floor(n/2)+1])/2 or latest
+      rows[#rows+1]={id=id,lead=lead,net=ForeverMarketSaleNet(math.min(latest,reference)),days=n}
+    end
+  end
+  table.sort(rows,function(a,b)
+    if a.net~=b.net then return a.net>b.net end
+    if a.days~=b.days then return a.days>b.days end
+    return a.id<b.id
+  end)
+  return rows
+end
+
 local function sessions()
   local a=M.account();a.farming=a.farming or {};return a.farming
 end

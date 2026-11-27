@@ -120,7 +120,7 @@ local function data(view)
       for _,r in ipairs(picks) do add('#'..r.rank..'  '..name(r.id),'Research ceiling  '..coins(r.ceiling),lookup(r.id)) end
     end
   elseif view.full and section=='Tools' then
-    for _,v in ipairs({{'Selling session','Posting and relisting','Sell session'},{'Shopping basket','Plan restocks','Basket'},{'Supply plan','Crafting and materials','Supply plan'},{'Mail & bank','Inventory and transfers','Mail & bank'},{'Price watches','Set item ceilings','Watches'},{'Scan outcomes','Benchmarks and comparisons','Scan results'},{'Farming','Review farming sessions','Farming'}}) do add(v[1],v[2],tool(v[3])) end
+    for _,v in ipairs({{'Selling session','Posting and relisting','Sell session'},{'Shopping basket','Plan restocks','Basket'},{'Supply plan','Crafting and materials','Supply plan'},{'Mail & bank','Inventory and transfers','Mail & bank'},{'Price watches','Set item ceilings','Watches'},{'Scan outcomes','Benchmarks and comparisons','Scan results'},{'Farming','Find items to farm and track routes','Farming'}}) do add(v[1],v[2],tool(v[3])) end
   elseif view.full and section=='Settings' then
     local function numeric(title,value,save)
       add(title,tostring(value)..'  /  Edit',function()

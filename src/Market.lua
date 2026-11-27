@@ -242,7 +242,7 @@ local commandHelp={
   {'/fm help, /fm commands','Show this command list.'},
   {'/fm tools, /fm home','Open the market tools hub.'},
   {'/fm analytics','View your market analytics.'},
-  {'/fm farm','Track a farming route and compare its hourly returns.'},
+  {'/fm farm','Find items to farm from AH prices or track your routes.'},
   {'/fm scan','Start a market price scan at the auction house.'},
   {'/fm scanstatus','Print progress and filtering details for the latest Buy scan.'},
   {'/fm results','Open market results.'},

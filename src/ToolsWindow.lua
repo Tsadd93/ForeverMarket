@@ -19,7 +19,7 @@ end
 local function input(x,y,w)
   local b=CreateFrame('EditBox',nil,f,'InputBoxTemplate');b:SetSize(w,22);b:SetPoint('TOPLEFT',x,y);b:SetAutoFocus(false);return b
 end
-local refresh
+local refresh,selectTab
 local function add(a,b,label,fn) content[#content+1]={a=a,b=b,label=label,fn=fn} end
 local function action(i,label,fn,offer)
   local button=actions[i]
@@ -245,7 +245,22 @@ local function chains()
   summary:SetText(chain and (itemName(chain.id)..' x '..chain.n..' / planned cash '..coins(chain.cost)..' / buy finished '..coins(M.cost(chain.id,chain.n))) or 'Visit each crafter’s profession window to record learned recipes.')
   for i,s in ipairs(chain and chain.steps or {}) do add(i..'. '..s.action..' '..itemName(s.id),s.n..' / '..(s.detail or '')..(s.cost and (' '..coins(s.cost)) or '')) end
 end
+local showFarmRoutes=false
 local function farming()
+  action(2,showFarmRoutes and 'What to farm' or 'My routes',function()
+    showFarmRoutes=not showFarmRoutes;page=1
+  end)
+  if not showFarmRoutes then
+    hint:SetText('Ranked by estimated AH return per item. Gathering speed and buyer demand can vary.')
+    local targets=M.farmTargets()
+    summary:SetText(#targets>0 and 'Item / estimated net per unit / gathering lead' or 'No recent prices for farmable items. Run Market Scan at an auctioneer.')
+    for _,target in ipairs(targets) do
+      add(itemName(target.id),coins(target.net)..' each / '..target.lead,'History',function()
+        selectTab('History',target.id)
+      end)
+    end
+    return
+  end
   hint:SetText('Enter a farm or route name at left. Start when you begin looting; stop when done.')
   action(1,M.account().farmActive and 'Stop session' or 'Start session',function()
     return M.account().farmActive and M.farmStop() or M.farmStart(field:GetText())
@@ -260,7 +275,6 @@ local function farming()
   end
   for k,r in pairs(routes) do add(k..' ('..r.n..')','Vendor '..coins(r.vendor*3600/r.elapsed)..' / AH est. '..coins(r.market*3600/r.elapsed)..' / paid '..coins(r.returned*3600/r.elapsed)) end
 end
-local selectTab
 local function openAH(key)
   if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
   if not ForeverMarketPages or not ForeverMarketPages[key] then return 'This page is still loading.' end
@@ -323,11 +337,11 @@ refresh=function()
   if not f or not f:IsShown() then return end
   content={};for _,c in ipairs(cards) do c:Hide() end;for _,t in pairs(chart) do t:Hide() end;for _,b in ipairs(actions) do b:Hide() end
   local special=mode=='Run detail' or mode=='Conversion detail' or mode=='Comparison' or mode=='Rule presets' or mode=='Watches' or mode=='Conversions' or mode=='Realm coverage' or mode=='Scan results' or mode=='Sell session'
-  local inputs=mode~='Results' and mode~='Home' and mode~='Preview' and (not special or mode=='Watches' or mode=='Comparison' or mode=='Rule presets')
-  field:SetShown(inputs);if viewport then viewport:SetShown(inputs) end;second:SetShown(inputs)
+  local inputs=(mode~='Farming' or showFarmRoutes) and mode~='Results' and mode~='Home' and mode~='Preview' and (not special or mode=='Watches' or mode=='Comparison' or mode=='Rule presets')
+  field:SetShown(inputs);if viewport then viewport:SetShown(inputs) end;second:SetShown(inputs and mode~='Farming')
   if heading then
     heading:SetShown(not inputs);emblem:SetShown(not inputs)
-    heading:SetText(special and mode or mode=='Home' and 'Auction house' or mode=='Results' and 'Trading results' or 'Posting preview')
+    heading:SetText(mode=='Farming' and 'What to farm' or special and mode or mode=='Home' and 'Auction house' or mode=='Results' and 'Trading results' or 'Posting preview')
     emblem:SetTexture(mode=='Preview' and 'Interface\\Icons\\INV_Letter_15' or mode=='Home' and 'Interface\\Icons\\INV_Misc_Coin_01' or 'Interface\\Icons\\INV_Misc_Book_09')
   end
   if special then
@@ -369,6 +383,7 @@ selectTab=function(tab,value)
   if M.monitorPrices then M.monitorPrices(false) end
   M.cancelMaterial();mode=tab;page=1;
   for key,b in pairs(nav) do if b.SetEnabled then b:SetEnabled(key~=tab) end end
+  if tab=='Farming' then showFarmRoutes=false end
   preview=nil;chain=nil;field:SetText(value and tostring(value) or '');second:SetText(tab=='Supply plan' and '1' or '')
   if tab=='Comparison' or tab=='Run detail' or tab=='Conversion detail' then compareID=value;field:SetText('') end
   if tab=='Basket' then M.restockList();field:SetText(M.account().manager.active) end
