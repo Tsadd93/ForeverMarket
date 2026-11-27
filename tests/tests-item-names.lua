@@ -21,3 +21,15 @@ assert(a.text==names[8845] and b.text=='Ghost Mushroom (50)' and c.text=='Loadin
 received(nil,nil,8170,false)
 assert(c.text=='Unknown item (8170)')
 print('PASS: cold cache, shared requests, late names, recycled rows and failed loads')
+
+-- A completion may rebind multiple labels still waiting on another item.
+local d,e=label(),label()
+ForeverMarketSetItemText(d,'Item 10 / Item 11')
+ForeverMarketSetItemText(e,'Item 10')
+e:SetText('Different row')
+names[10]='First'
+received(nil,nil,10,true)
+assert(d.text=='First / Loading item name...' and e.text=='Different row')
+names[11]='Second'
+received(nil,nil,11,true)
+assert(d.text=='First / Second' and requests[10]==1 and requests[11]==1)

@@ -71,40 +71,48 @@ function M.importReferencePack(raw)
   for id,v in pairs(pack.rows) do if not rows[id] or v.at>rows[id].at then rows[id]=v end end
   return 'Reviewed '..pack.count..' reference prices. Trading uses local scans.'
 end
+local function regionalRow(id, full, now)
+  local r = full and full.items[id]
+  if r and r[1] then return {r[1], r[2], r[3], full.at} end
+  local sample = ForeverMarketRegionPrices and ForeverMarketRegionPrices[id]
+  if sample and sample[4] <= now and now-sample[4] <= 7*86400 then return sample end
+end
 function M.regionReference(id)
-  local full=M.fullRegion and M.fullRegion();local r=full and full.items[id]
-  if r and r[1] then return {r[1],r[2],r[3],full.at} end
-  local v=ForeverMarketRegionPrices and ForeverMarketRegionPrices[id]
-  if v and v[4]<=time() and time()-v[4]<=7*86400 then return v end
+  return regionalRow(id, M.fullRegion and M.fullRegion(), time())
 end
 function M.sharedReferences(filter)
-  local all=ForeverMarketDB.peerReferences
-  local source=all and all[venue()] or {}
-  local rows={}
-  local seed=ForeverMarketStarter
-  local matching=seed and venue()==table.concat({seed.region,seed.realmID,seed.faction,'F'},'/') and time()>=seed.at and time()-seed.at<=21*86400
-  if matching then
-    for id,price in pairs(seed.items or {}) do
-      local v=source[id]
-      if not v or time()-v.at>7*86400 or v.at<seed.at then rows[#rows+1]={id=id,at=seed.at,price=price,starter=true} end
+  local scope, now = venue(), time()
+  local peers = ForeverMarketDB.peerReferences
+  local source = peers and peers[scope] or {}
+  local seed = ForeverMarketStarter
+  local matching = seed and scope == table.concat({seed.region,seed.realmID,seed.faction,'F'},'/')
+    and now >= seed.at and now-seed.at <= 21*86400
+  local starter = matching and seed.items or {}
+  local full = M.fullRegion and M.fullRegion()
+  local rows = {}
+  -- Prefer the newer local reference, with peer data winning a timestamp tie.
+  -- Regional data is a separate comparison price and never replaces a local row.
+  local function addLocal(id)
+    local peer = source[id]
+    if peer and (peer.at > now or now-peer.at > 7*86400) then peer = nil end
+    if starter[id] and (not peer or seed.at > peer.at) then
+      rows[#rows+1] = {id=id, at=seed.at, price=starter[id], starter=true}
+    elseif peer then
+      rows[#rows+1] = {id=id, at=peer.at, price=peer.price}
     end
   end
-  for id,v in pairs(source) do
-    if v.at<=time() and time()-v.at<=7*86400 and not (matching and seed.items[id] and seed.at>v.at) then rows[#rows+1]={id=id,at=v.at,price=v.price} end
-  end
-  local full=M.fullRegion and M.fullRegion()
-  local indexed=filter and {[filter]=true} or full and full.items or ForeverMarketRegionPrices or {}
-  for id in pairs(indexed) do
-    if not filter or filter==id then
-      local v=M.regionReference(id)
-      if v then rows[#rows+1]={id=id,at=v[4],price=v[1],regional=true,rate=v[2],volume=v[3]} end
-    end
+  local function addRegion(id)
+    local v = regionalRow(id, full, now)
+    if v then rows[#rows+1] = {id=id, at=v[4], price=v[1], regional=true, rate=v[2], volume=v[3]} end
   end
   if filter then
-    local matches={}
-    for _,r in ipairs(rows) do if r.id==filter then matches[#matches+1]=r end end
-    rows=matches
+    addLocal(filter)
+    addRegion(filter)
+    return rows
   end
+  for id in pairs(starter) do addLocal(id) end
+  for id in pairs(source) do if not starter[id] then addLocal(id) end end
+  for id in pairs(full and full.items or ForeverMarketRegionPrices or {}) do addRegion(id) end
   table.sort(rows,function(a,b)
     if a.regional~=b.regional then return not a.regional end
     if a.regional and (a.volume or 0)~=(b.volume or 0) then return (a.volume or 0)>(b.volume or 0) end

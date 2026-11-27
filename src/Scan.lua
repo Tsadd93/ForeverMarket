@@ -160,8 +160,9 @@ local function create()
     records={};page=1
     local history=ForeverMarketHistory();marketHistory=history
     if snapshot then
+      local observedAt=time()-math.floor(GetTime()-snapshot.at)
       for id,book in pairs(snapshot.books) do
-        records[#records+1]={id=id,seen=time()-math.floor(GetTime()-snapshot.at),qty=book.quantity,low=book.low,bulk=book.floorPrice}
+        records[#records+1]={id=id,seen=observedAt,qty=book.quantity,low=book.low,bulk=book.floorPrice}
       end
     else
       for key,h in pairs(history) do
@@ -198,7 +199,7 @@ local function create()
     if step and not api.IsThrottledMessageSystemReady() then
       status:SetText('Waiting for the auction house to accept the next request...');return
     end
-    if step and api.IsThrottledMessageSystemReady() then
+    if step then
       local action=step;step=nil;last=GetTime()
       if action=='start' then api.SendBrowseQuery(query) else api.RequestMoreBrowseResults() end
     end

@@ -1,11 +1,26 @@
 -- Resolve item placeholders only while formatting labels. Stored history and
 -- auction requests continue to use their original item keys.
 local waiting, requested, failed = {}, {}, {}
+-- A recycled row can wait for several names. Keep both directions so a reply
+-- visits just its subscribers and rebinding a row removes every old subscription.
+local subscribers = {}
+local function forget(label)
+  local state = waiting[label]
+  if not state then return end
+  for id in pairs(state.ids) do
+    local group = subscribers[id]
+    if group then
+      group[label] = nil
+      if not next(group) then subscribers[id] = nil end
+    end
+  end
+  waiting[label] = nil
+end
 local listener
 local pattern = '%f[%a][Ii]tem #?(%d+)%f[%D]'
 
 function ForeverMarketSetItemText(label, source)
-  waiting[label] = nil
+  forget(label)
   if type(source) ~= 'string' or not source:find(pattern) then
     label:SetText(source)
     return
@@ -22,6 +37,10 @@ function ForeverMarketSetItemText(label, source)
   label:SetText(display)
   if not next(missing) then return end
   waiting[label] = {source=source, display=display, ids=missing}
+  for id in pairs(missing) do
+    subscribers[id] = subscribers[id] or {}
+    subscribers[id][label] = waiting[label]
+  end
   if not listener then
     listener = CreateFrame('Frame')
     listener:RegisterEvent('GET_ITEM_INFO_RECEIVED')
@@ -29,15 +48,14 @@ function ForeverMarketSetItemText(label, source)
       if not requested[id] then return end
       requested[id] = nil
       if success == false or not C_Item.GetItemNameByID(id) then failed[id] = GetTime()+60 end
-      local redraw = {}
-      for widget, state in pairs(waiting) do
-        if state.ids[id] then redraw[widget] = state end
-      end
+      -- Detach the completed group before redrawing. Redraw can subscribe again.
+      local redraw = subscribers[id] or {}
+      subscribers[id] = nil
       for widget, state in pairs(redraw) do
         if widget:GetText() == state.display then
           ForeverMarketSetItemText(widget, state.source)
         else
-          waiting[widget] = nil
+          forget(widget)
         end
       end
     end)

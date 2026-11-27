@@ -41,3 +41,12 @@ assert(#account.desk.groups[5].program.sell==2 and #account.desk.groups[5].progr
 assert(not M.setNamedFormula('user_price','user_price'):match('^Saved'))
 assert(not M.customProgram('invalid_source'))
 print('PASS: daily models, venue isolation, reference expiry, first scan, named and ordered rule persistence')
+
+-- A full-region snapshot is selected once per report, even for thousands of IDs.
+local selections=0
+local feed={at=now,items={}}
+for id=1,5000 do feed.items[id]={100+id,1,2} end
+M.fullRegion=function() selections=selections+1;return feed end
+assert(#M.sharedReferences()==5000 and selections==1)
+local single=M.sharedReferences(4000)
+assert(#single==1 and single[1].id==4000 and single[1].price==4100 and selections==2)
