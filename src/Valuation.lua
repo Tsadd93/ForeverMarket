@@ -114,14 +114,6 @@ function M.bagCount(id)
   local count=C_Item and C_Item.GetItemCount or GetItemCount
   return count and count(id,false,false,false) or 0
 end
-function M.levels(levels)
-  local prices={}
-  for price in pairs(levels) do prices[#prices+1]=price end
-  table.sort(prices)
-  local out={}
-  for i=1,math.min(32,#prices) do out[i]={prices[i],levels[prices[i]]} end
-  return out
-end
 function M.cost(id,n,tiers)
   if n<=0 then return 0 end
   local depth=ForeverMarketDB.__depth

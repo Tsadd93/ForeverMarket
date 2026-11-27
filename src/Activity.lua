@@ -141,7 +141,8 @@ local function readSellSlot()
   local name=GetAuctionSellItemInfo()
   if name then return {name=name,itemId=item(GetAuctionSellItemLink and GetAuctionSellItemLink())} end
 end
-function ForeverMarketPriceDepth(levels)
+-- Sort once for both the bulk ask and the optional 32 cheapest posting tiers.
+function ForeverMarketPriceDepth(levels, includeTiers)
   local prices,volume={},0
   for price,qty in pairs(levels) do prices[#prices+1]=price;volume=volume+qty end
   table.sort(prices)
@@ -154,7 +155,12 @@ function ForeverMarketPriceDepth(levels)
     local p=prices[i]
     if p>=prices[i-1]*1.25 and levels[p]>=math.max(10,below*5) then floorPrice=p;break end
   end
-  return {low=low,lowQty=levels[low],floorPrice=floorPrice,floorQty=levels[floorPrice],nextPrice=prices[2],nextQty=prices[2] and levels[prices[2]]}
+  local tiers
+  if includeTiers then
+    tiers={}
+    for i=1,math.min(32,#prices) do tiers[i]={prices[i],levels[prices[i]]} end
+  end
+  return {high=prices[#prices],quantity=volume,levels=tiers,low=low,lowQty=levels[low],floorPrice=floorPrice,floorQty=levels[floorPrice],nextPrice=prices[2],nextQty=prices[2] and levels[prices[2]]}
 end
 local function captureDepth(id)
   local api=C_AuctionHouse
@@ -166,7 +172,7 @@ local function captureDepth(id)
       levels[r.unitPrice]=(levels[r.unitPrice] or 0)+r.quantity
     end
   end
-  local d=ForeverMarketPriceDepth(levels)
+  local d=ForeverMarketPriceDepth(levels,ForeverMarketTools~=nil)
   if not d then return end
   local market=GetRealmName()..'|'..UnitFactionGroup('player')
   ForeverMarketDB.__depth=ForeverMarketDB.__depth or {}
@@ -176,8 +182,7 @@ local function captureDepth(id)
   if prev and time()-prev.at<60 and prev.low==d.low and prev.lowQty==d.lowQty and prev.floorPrice==d.floorPrice and prev.floorQty==d.floorQty and prev.nextPrice==d.nextPrice and prev.nextQty==d.nextQty and not ForeverMarketTools then return end
   if ForeverMarketTools then
     if api.HasFullCommoditySearchResults and not api.HasFullCommoditySearchResults(id) then return end
-    d.levels=ForeverMarketTools.levels(levels)
-    if prev and time()-prev.at<60 and prev.levels and #d.levels==#prev.levels then
+    if prev and time()-prev.at<60 and prev.levels and d.quantity==prev.quantity and d.floorPrice==prev.floorPrice and d.high==prev.high and #d.levels==#prev.levels then
       local same=true
       for i,t in ipairs(d.levels) do if t[1]~=prev.levels[i][1] or t[2]~=prev.levels[i][2] then same=false;break end end
       if same then return end
@@ -185,8 +190,7 @@ local function captureDepth(id)
   end
   d.itemId=id;d.at=time();all[market][id]=d
   if ForeverMarketObserve and (not api.HasFullCommoditySearchResults or api.HasFullCommoditySearchResults(id)) then
-    local total=0;for _,qty in pairs(levels) do total=total+qty end
-    ForeverMarketObserve(tostring(id),d.low,total,d.floorPrice)
+    ForeverMarketObserve(tostring(id),d.low,d.quantity,d.floorPrice)
   end
   local event={}
   for key,value in pairs(d) do if key~='levels' then event[key]=value end end

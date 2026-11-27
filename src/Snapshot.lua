@@ -83,18 +83,11 @@ frame:SetScript('OnUpdate',function()
       end
       job=nil;return
     end
-    local d=ForeverMarketPriceDepth(levels)
-    if ForeverMarketTools then d.levels=ForeverMarketTools.levels(levels) end
-    local qty=0
-    for p,n in pairs(levels) do
-      d.high=math.max(d.high or 0,p)
-      qty=qty+n
-    end
-    d.quantity=qty
+    local d=ForeverMarketPriceDepth(levels,ForeverMarketTools~=nil)
     job.books[id]=d
     -- Replication identifies the base item; variant-specific prices still
     -- come from keyed browse and live item searches.
-    if id~=82800 then ForeverMarketObserve(tostring(id),d.low,qty,d.floorPrice) end
+    if id~=82800 then ForeverMarketObserve(tostring(id),d.low,d.quantity,d.floorPrice) end
     job.lastID=id
   end
 end)

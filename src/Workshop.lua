@@ -1,5 +1,5 @@
 local M=ForeverMarketTools
-local panel,summary,notice,qty,fee,loss,settings,mode,page
+local panel,summary,notice,qty,fee,loss,mode,page
 local rows={}
 local list={}
 local function money(n)

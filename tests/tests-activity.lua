@@ -60,11 +60,17 @@ hooks.PostCommodity({},1,1,25);event(nil,'AUCTION_HOUSE_AUCTION_CREATED',42)
 assert(last().kind=='posted' and last().total==25 and last().auctionId==42)
 event(nil,'AUCTION_HOUSE_SHOW_FORMATTED_NOTIFICATION',3,'Linen Cloth',42)
 assert(last().kind=='sale_notice' and last().name=='Linen Cloth')
-print('PASS: commodity confirmation, post and sale notification')local book=ForeverMarketPriceDepth({[16]=1,[87]=465,[88]=888,[89]=205,[90]=458,[95]=182,[99]=75})
+print('PASS: commodity confirmation, post and sale notification')
+local book=ForeverMarketPriceDepth({[16]=1,[87]=465,[88]=888,[89]=205,[90]=458,[95]=182,[99]=75})
 assert(book.low==16 and book.lowQty==1 and book.floorPrice==87 and book.floorQty==465)
 assert(ForeverMarketPriceDepth({[16]=100,[87]=465}).floorPrice==16)
 assert(ForeverMarketPriceDepth({[16]=1,[17]=465}).floorPrice==16)
-print('PASS: isolated undercut, substantial cheap supply, normal spread')
+local ladder={}
+for i=1,40 do ladder[i]=2 end
+local depth=ForeverMarketPriceDepth(ladder,true)
+assert(depth.quantity==80 and depth.high==40 and #depth.levels==32 and depth.levels[32][1]==32)
+assert(ForeverMarketPriceDepth(ladder).levels==nil)
+print('PASS: isolated undercut, bulk supply, capped tiers and full-book quantity')
 
 invoiceType='seller'
 hooks.TakeInboxMoney(1);hooks.TakeInboxMoney(2)

@@ -189,6 +189,8 @@ local function assemble(sliced)
               expires=math.min(expires,stamp+30*86400)
             end
           end
+          -- Retry uncached item info on a later export instead of keeping a placeholder all day.
+          if not class or name=='Item '..id then expires=math.min(expires,start+60) end
           record={data=d,live=live[key],untilAt=expires,text=json({key=tostring(key),id=id,name=name,class=class,history=days,live=live[key]})}
           cache[key]=record
         else record=nil end

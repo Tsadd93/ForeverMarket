@@ -1,5 +1,4 @@
 local M=ForeverMarketTools
-local money=ForeverMarketCoins
 local function name(id) return C_Item.GetItemNameByID(id) or ('Item '..id) end
 local function count(t,id,n) t[id]=(t[id] or 0)+n end
 local function recipient(a)

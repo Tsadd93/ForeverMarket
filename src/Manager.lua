@@ -635,8 +635,7 @@ local function create()
   local sync=control('Auctions',button(panel,378,-70,194,'Live desktop sync',function(self)
     self:SetText('Live desktop sync: '..(ForeverMarketLiveSync(not ForeverMarketLiveSync()) and 'on' or 'off'))
   end))
-  local scope
-  scope=control('Rules',button(panel,495,-98,108,'Scope: item',function(self)M.classScope=not M.classScope;self:SetText(M.classScope and 'Scope: category' or 'Scope: item')end))
+  control('Rules',button(panel,495,-98,108,'Scope: item',function(self)M.classScope=not M.classScope;self:SetText(M.classScope and 'Scope: category' or 'Scope: item')end))
   local labels={label(panel,15,-56,165),label(panel,190,-56,74),label(panel,266,-56,110),label(panel,375,-56,120)}
   for i,t in ipairs({'Item ID / link / list','Keep qty','Max copper each','List name'}) do labels[i]:SetText(t) end
   cap:SetText('0');target:SetText('1');listName:SetText(prefs().active)
