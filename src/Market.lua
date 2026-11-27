@@ -161,41 +161,87 @@ local function info(key)
   end
   return id, name or ('Item ' .. id), class
 end
-local function export(quiet)
+-- Keep the published export intact until a complete replacement is ready.
+local worker,wanted,announce
+local cache,cacheScope={}
+local function assemble(sliced)
   if not ForeverMarketMigrate() then return end
-  local rows, count = {}, 0
-  local live = ForeverMarketDB and ForeverMarketDB[market()] or {}
-  for key,d in pairs(ForeverMarketHistory()) do
+  local history=ForeverMarketHistory()
+  local scope=market()
+  local live=ForeverMarketDB[scope] or {}
+  if cacheScope~=history then cache={};cacheScope=history end
+  local start=time()
+  local parts,count={},0
+  local since=debugprofilestop and debugprofilestop() or 0
+  for key,d in pairs(history) do
     if type(d)=='table' and type(d.h)=='table' then
-      key=tostring(key)
-      local id,name,class=info(key)
-      if id then
-        local history={}
-        for day,high in pairs(d.h) do
-          local stamp=d.stamp[day] or tonumber(day)*86400
-          if stamp > time()-30*86400 then
-            history[#history+1]={at=stamp,low=(d.l and d.l[day]) or high,high=high,quantity=d.a and d.a[day]}
+      local record=cache[key]
+      if not record or record.data~=d or record.live~=live[key] or record.untilAt<=start then
+        local id,name,class=info(tostring(key))
+        if id then
+          local days,expires={},start+86400
+          for day,high in pairs(d.h) do
+            local stamp=(d.stamp and d.stamp[day]) or tonumber(day)*86400
+            if stamp>start-30*86400 then
+              days[#days+1]={at=stamp,low=(d.l and d.l[day]) or high,high=high,quantity=d.a and d.a[day]}
+              expires=math.min(expires,stamp+30*86400)
+            end
           end
-        end
-        rows[#rows+1]={key=key,id=id,name=name,class=class,history=history,live=live[key]}
-        count=count+1
+          record={data=d,live=live[key],untilAt=expires,text=json({key=tostring(key),id=id,name=name,class=class,history=days,live=live[key]})}
+          cache[key]=record
+        else record=nil end
       end
+      if record then parts[#parts+1]=record.text end
+    end
+    count=count+1
+    if sliced and (count%48==0 or debugprofilestop and debugprofilestop()-since>=1.5) then
+      coroutine.yield()
+      if scope~=market() then wanted=true;return end
+      since=debugprofilestop and debugprofilestop() or 0
     end
   end
-  ForeverMarketExport=json({version=1,realm=ForeverMarketDesktopRealm and ForeverMarketDesktopRealm(GetRealmName(),GetCurrentRegion(),UnitFactionGroup('player')) or GetRealmName(),faction=UnitFactionGroup('player'),region=GetCurrentRegion(),exportedAt=time(),gold=GetMoney(),rows=rows,activity=ForeverMarketDesktopEvents and ForeverMarketDesktopEvents()})
-  if not quiet then print('|cff65dfc0Forever Market:|r Exported '..count..' items. Type /reload to save for the desktop app.') end
+  local events=ForeverMarketActivity and ForeverMarketActivity.events or {}
+  local activity={}
+  for i=1,#events do
+    local e=ForeverMarketDesktopEvent and ForeverMarketDesktopEvent(events[i])
+    if e then activity[#activity+1]=json(e) end
+    if sliced and (i%32==0 or debugprofilestop and debugprofilestop()-since>=1.5) then
+      coroutine.yield()
+      if scope~=market() then wanted=true;return end
+      since=debugprofilestop and debugprofilestop() or 0
+    end
+  end
+  local meta=json({version=1,realm=ForeverMarketDesktopRealm and ForeverMarketDesktopRealm(GetRealmName(),GetCurrentRegion(),UnitFactionGroup('player')) or GetRealmName(),faction=UnitFactionGroup('player'),region=GetCurrentRegion(),exportedAt=time(),gold=GetMoney()})
+  ForeverMarketExport=table.concat({meta:sub(1,-2),',"activity":[',table.concat(activity,','),'],"rows":[',table.concat(parts,','),']}'})
+  if announce then print('Forever Market: export ready. Type /reload to save it for the desktop app.');announce=nil end
 end
 local f=CreateFrame('Frame')
-f:RegisterEvent('PLAYER_LOGIN'); f:RegisterEvent('AUCTION_HOUSE_SHOW'); f:RegisterEvent('AUCTION_HOUSE_CLOSED'); f:RegisterEvent('PLAYER_LOGOUT')
+local function pump()
+  if not worker then
+    if not wanted then return end
+    wanted=nil;worker=coroutine.create(function()assemble(true)end)
+  end
+  local ok,why=coroutine.resume(worker)
+  if not ok then print('Forever Market export: '..tostring(why)) end
+  if not ok or coroutine.status(worker)=='dead' then worker=nil end
+  if not worker and not wanted then f:SetScript('OnUpdate',nil) end
+end
+local function export(quiet)
+  wanted=true;if not quiet then announce=true end
+  f:SetScript('OnUpdate',pump)
+end
+f:RegisterEvent('PLAYER_LOGIN');f:RegisterEvent('AUCTION_HOUSE_CLOSED');f:RegisterEvent('PLAYER_LOGOUT')
 f:SetScript('OnEvent',function(_,event)
   if event=='PLAYER_LOGIN' then ForeverMarketMigrate()
   elseif event=='AUCTION_HOUSE_CLOSED' then export(true)
-  elseif event=='PLAYER_LOGOUT' then export(true) end
+  elseif event=='PLAYER_LOGOUT' then assemble(false) end
 end)
 SLASH_FOREVERMARKET1='/fm'
 SlashCmdList.FOREVERMARKET=function(msg)
   msg=(msg or ''):lower():match('^%s*(.-)%s*$')
-  if msg=='preview' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview')
+  if msg=='' or msg=='dash' or msg=='dashboard' then ForeverMarketTools.openDashboard()
+  elseif msg=='analytics' then ForeverMarketTools.openAnalytics()
+  elseif msg=='preview' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview')
   elseif msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()
   elseif msg=='manage' and ForeverMarketTools and ForeverMarketTools.openManager and AuctionHouseFrame and AuctionHouseFrame:IsShown() then ForeverMarketTools.openManager()
   elseif msg=='watch' then ForeverMarketTools.openTools('Watches')
@@ -205,7 +251,7 @@ SlashCmdList.FOREVERMARKET=function(msg)
   elseif (msg=='tools' or msg=='home') and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Home')
   elseif msg=='farm' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Farming')
   elseif msg=='scan' and ForeverMarketScan then ForeverMarketScan()
-  elseif msg=='' or msg=='export' then export(false)
+  elseif msg=='export' then export(false)
   elseif msg:match('^benchmark %d+$') then
     local g=tonumber(msg:match('%d+'))
     if ForeverMarketBenchmark and (g==1 or g==5 or g==50) then ForeverMarketBenchmark(g) else print('Open Market Buy, then use /fm benchmark 1, 5 or 50.') end

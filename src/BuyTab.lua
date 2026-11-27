@@ -103,6 +103,19 @@ local itemConfirmation=false
 local scanWait
 local scanWake=false
 local fundMessageUntil=0
+function ForeverMarketSetFundGold(value)
+    local gold=tonumber(value);local f=fund()
+    if f.pending then return nil,'Wait for purchase confirmation before changing the fund.' end
+    if not gold or gold~=gold or gold<=0 or gold>10000000 then return nil,'Enter a positive cash amount in gold.' end
+    local cash=math.floor(gold*10000+.5)
+    if cash<1 then return nil,'Enter at least one copper (0.0001 gold).' end
+    local reserved=0
+    for _,h in pairs(f.held) do reserved=reserved+(h.reserve or 0) end
+    if cash<reserved then return nil,'Reserved for posting deposits: '..ForeverMarketCoins(reserved) end
+    f.seed=f.seed+(cash-f.cash)
+    ForeverMarketChangeCash(f,cash-f.cash,'Fund adjustment')
+    return cash
+end
 local function note(s) if status then status:SetText(s) end end
 local function clearQuote()
   if quote then quote=nil;api.CancelCommoditiesPurchase() end
@@ -1108,17 +1121,9 @@ local function create()
   local edit=CreateFrame('EditBox',nil,panel,'InputBoxTemplate');edit:SetSize(45,24);edit:SetPoint('TOPLEFT',178,0);edit:SetAutoFocus(false)
   local set=CreateFrame('Button',nil,panel,'UIPanelButtonTemplate');set:SetSize(92,24);set:SetPoint('TOPLEFT',230,0);set:SetText('Set fund (gold)')
   set:SetScript('OnClick',function()
-    local gold=tonumber(edit:GetText());local f=fund()
     fundMessageUntil=GetTime()+8
-    if f.pending then note('Wait for purchase confirmation before changing the fund.');return end
-    if not gold or gold~=gold or gold<=0 or gold>10000000 then note('Enter a positive cash amount in gold.');return end
-    local cash=math.floor(gold*10000+.5)
-    if cash<1 then note('Enter at least one copper (0.0001 gold).');return end
-    local reserved=0
-    for _,h in pairs(f.held) do reserved=reserved+(h.reserve or 0) end
-    if cash<reserved then note('Reserved for posting deposits: '..ForeverMarketCoins(reserved));return end
-    f.seed=f.seed+(cash-f.cash)
-    ForeverMarketChangeCash(f,cash-f.cash,'Fund adjustment')
+    local cash,why=ForeverMarketSetFundGold(edit:GetText())
+    if not cash then note(why);return end
     edit:SetText(cash/10000);edit:ClearFocus()
     clearQuote();render();note('Fund saved.')
   end)

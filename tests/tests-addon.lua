@@ -6,23 +6,28 @@ function UnitFactionGroup() return 'Horde' end
 function GetCurrentRegion() return 1 end
 function GetMoney() return 100000 end
 function GetItemInfo(id) return 'Herb "Test"',nil,1,1,1,'Trade Goods',nil,20,nil,nil,10,7 end
-function CreateFrame() return {RegisterEvent=function()end,SetScript=function(_,_,f)handlers.event=f end} end
+function CreateFrame() return {RegisterEvent=function()end,SetScript=function(_,kind,f)handlers[kind]=f end} end
 C_Timer={After=function(_,f)f()end}
 SlashCmdList={}
 local printed=print
 function print(s) prints[#prints+1]=s end
 dofile('src/History.lua')
 dofile('src/Market.lua')
-handlers.event(nil,'PLAYER_LOGIN')
+handlers.OnEvent(nil,'PLAYER_LOGIN')
 assert(not next(ForeverMarketHistory()))
 ForeverMarketObserve('123',700,8,850)
 assert(ForeverMarketDB['Test Realm|Horde']['123'].price==700)
 assert(ForeverMarketDB['Test Realm|Horde']['123'].at==clock)
-SlashCmdList.FOREVERMARKET()
+local opened=0
+ForeverMarketTools={openDashboard=function()opened=opened+1 end}
+SlashCmdList.FOREVERMARKET();SlashCmdList.FOREVERMARKET('dash');assert(opened==2)
+ForeverMarketTools=nil
+SlashCmdList.FOREVERMARKET('export')
+while handlers.OnUpdate do handlers.OnUpdate() end
 assert(ForeverMarketExport:find('"realm":"Test Realm"',1,true))
 assert(ForeverMarketExport:find('"price":700',1,true))
 assert(ForeverMarketExport:find('Herb \\"Test\\"',1,true))
-handlers.event(nil,'AUCTION_HOUSE_CLOSED')
+handlers.OnEvent(nil,'AUCTION_HOUSE_CLOSED')
 assert(ForeverMarketHistory()['123'].bulk.price==850)
 printed('PASS: native history, fresh install, export and exact timestamp')
 -- Overlapping days and mirrored availability must not be double-counted.

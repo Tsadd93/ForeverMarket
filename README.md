@@ -103,7 +103,7 @@ From **Scan outcomes**, choose **Test 1 gold**, **Test 5 gold**, or **Test 50 go
 
 ## Optional Windows dashboard
 
-[Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.
+[Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.9.0/ForeverMarket-Desktop-0.9.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.
 
 To connect your character, run an auction scan in WoW, then use `/fm export` and `/reload`. In the dashboard’s **Connections** tab, choose your TSM region, realm type, and faction and click **Link to selected market**. Live TSM pricing requires internet access.
 
@@ -135,3 +135,9 @@ On Market Sell, check the box beside an item to protect every stack of that item
 On Craft > Build list, the reagent rows combine requirements across queued recipes. Click Check beside a missing reagent, review the live quantity and total, then click Buy. Covered reagents stay visible. The recipe rows still let you remove a planned craft.
 
 Click Scan market for a fresh pass. When the realm snapshot is on cooldown, the addon requests current browse results and saves the observed asks and supply. The server controls how quickly those results arrive.
+
+### Dashboard and auction analytics
+
+Type `/fm` or `/fm dash` anywhere to open the full dashboard. Overview balances drill down into their records. Sales & profit, Item history, Watchlist and Research offer 7-, 14- and 30-day views. Forward-test totals are labeled lifetime. The Tools section opens trading workflows; Settings includes fund allocation, profit target, fees, stock and optional live sync. The auction house Analytics tab offers browsing and item lookup only. `/fm analytics` also opens reports away from the auctioneer.
+
+Desktop 0.9.0 includes the latest matching simulation summary with the existing ranked research feed; reload WoW after sync. Modeled profits are distinct from collected gold. Local reports work independently. Auction-house closure schedules a batched export. `/fm export` explicitly requests one; logout or reload saves the latest data.

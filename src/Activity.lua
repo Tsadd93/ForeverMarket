@@ -15,6 +15,9 @@ local function desktopEvent(e)
   local copy={};for k,v in pairs(e) do copy[k]=v end
   copy.realm=realm;return copy
 end
+function ForeverMarketDesktopEvent(e)
+  if e and e.kind~='auction_expired' then return desktopEvent(e) end
+end
 function ForeverMarketDesktopEvents()
   local exported={}
   for _,e in ipairs(ForeverMarketActivity and ForeverMarketActivity.events or {}) do
