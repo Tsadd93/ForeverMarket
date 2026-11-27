@@ -151,7 +151,7 @@ function M.beginFlip(f,h,p,e)
   if p.forecast==nil then return end
   f.flips=f.flips or {}
   local id=#f.flips+1
-  f.flips[id]={name=e.name or nameOf(p.id),item=p.id,at=e.at or time(),n=p.n,cost=e.total,
+  f.flips[id]={run=p.run,name=e.name or nameOf(p.id),item=p.id,at=e.at or time(),n=p.n,cost=e.total,
     expected=p.forecast,invest=p.target~=nil,sold=0,net=0,lost=0,listed=0}
   addShare(h,id,p.n)
 end
@@ -169,6 +169,10 @@ function M.payFlip(lot,e,n,offset)
     local r=ForeverMarketTradingFund().flips[id]
     r.wallet=(r.wallet or 0)+portion(e.amount,offset+start,take,e.quantity)
     r.net=r.net+portion(e.amount-e.deposit,offset+start,take,e.quantity)
+    if r.run and r.at and (e.at or time())<=r.at+7*86400 then
+      r.weekNet=(r.weekNet or 0)+portion(e.amount-e.deposit,offset+start,take,e.quantity)
+      r.weekPaid=(r.weekPaid or 0)+take
+    end
     if r.sold==0 then r.firstPaid=e.at or time() end
     r.listed=r.listed-take;r.sold=r.sold+take;r.lastPaid=e.at or time()
   end)
@@ -176,6 +180,7 @@ end
 local function returnFlip(h,lot,loss)
   moveShares(lot.shares,lot.n,lot.n,function(id,take,start)
     local r=ForeverMarketTradingFund().flips[id]
+    if r.run and r.at and time()<=r.at+7*86400 then r.weekLost=(r.weekLost or 0)+portion(loss,start,take,lot.n) end
     r.lost=r.lost+portion(loss,start,take,lot.n);r.listed=r.listed-take
     addShare(h,id,take)
   end)
@@ -206,6 +211,7 @@ function M.recordMarket(kind,e)
   end
   if not e.name or not e.quantity or e.quantity<1 then return end
   local a=M.account()
+  if kind=="posted" and M.sellingTimer then M.sellingTimer.posts=M.sellingTimer.posts+1 end
   if kind=='purchase' and e.total then
     local r=ledger(e.name);r.bought=r.bought+e.quantity;r.paid=r.paid+e.total
   elseif kind=='proceeds_collected' and e.invoiceType=='seller' and e.amount then
@@ -215,7 +221,8 @@ function M.recordMarket(kind,e)
     local bucket=days[e.name][day] or {n=0,count=0};days[e.name][day]=bucket
     bucket.n=bucket.n+e.quantity;bucket.count=bucket.count+1
     for d in pairs(days[e.name]) do if d<=day-7 then days[e.name][d]=nil end end
-  elseif kind=='posted' and e.itemId and a.relist then a.relist[e.itemId]=nil
+  elseif kind=='posted' and e.itemId then
+    if a.relist then a.relist[e.itemId]=nil end
   elseif kind=='auction_expired' and e.itemId then
     a.relist=a.relist or {};a.relist[e.itemId]=time()
     local f=ForeverMarketTradingFund()

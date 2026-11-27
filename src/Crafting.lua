@@ -180,7 +180,8 @@ function M.restockCraft(r,ctx)
   local name=C_Item.GetItemNameByID(r.output)
   local sales=M.saleCount and M.saleCount(name) or 0
   local stock=M.bagCount(r.output)+(ctx.stock[r.output] or 0)+(ctx.queued[r.output] or 0)
-  local needed=math.max(0,math.ceil(sales*3/7)-stock)
+  local group=M.group and M.group(r.output)
+  local needed=math.max(0,(group and group.craftStock or math.ceil(sales*3/7))-stock)
   local hi=math.min(999-(M.account().build[r.key] or 0),math.floor(needed/(r.yield or 1)))
   local lo,reason=0,sales==0 and 'No paid sales in 7 days' or 'Stock covers three days'
   while lo<hi do
@@ -201,6 +202,7 @@ function M.restockCraft(r,ctx)
     end
     if ok then lo=n else hi=n-1;reason=why or 'Materials pay better' end
   end
+  if group and group.minBatch and lo*(r.yield or 1)<group.minBatch then return 0,'Below craft restock minimum' end
   return lo,lo>0 and (sales..' sold / 7d; '..stock..' stocked or queued') or reason
 end
 function M.queue(key,n)
@@ -264,6 +266,7 @@ function M.startMaterial(id,order)
   local max=order and order.cap*n or M.cost(id,n)
   local rule=M.restockList and M.restockList()[id]
   if rule and rule.cap>0 and max and max>rule.cap*n then return nil,"Above shopping list price limit" end
+  if order and max and n>0 and M.groupPurchaseAllowed and not M.groupPurchaseAllowed(id,M.group(id),max/n,true) then return nil,'Above group shopping ceiling' end
   if n==0 or not max then return nil,'Refresh market supply' end
   if max>ForeverMarketSpendable(true) then return nil,'Insufficient trading cash' end
   local item=C_AuctionHouse.GetItemKeyInfo(C_AuctionHouse.MakeItemKey(id))
@@ -272,7 +275,7 @@ function M.startMaterial(id,order)
   M.quote={id=id,n=n,max=max,at=GetTime(),direct=order~=nil}
   if item.isCommodity then C_AuctionHouse.StartCommoditiesPurchase(id,n)
   else
-    local key=C_AuctionHouse.MakeItemKey(id)
+    local key=order and order.key and order.key.itemID==id and order.key or C_AuctionHouse.MakeItemKey(id)
     M.quote.key=key
     C_AuctionHouse.SendSearchQuery(key,{},false)
   end
@@ -298,6 +301,9 @@ function M.confirmMaterial()
   local f=ForeverMarketTradingFund()
   local rule=M.restockList and M.restockList()[q.id]
   if rule and rule.cap>0 and q.total>rule.cap*(q.key and 1 or q.n) then M.cancelMaterial();return nil,"Above shopping list price limit" end
+  if q.direct and M.groupPurchaseAllowed and not M.groupPurchaseAllowed(q.id,M.group(q.id),q.total/(q.key and 1 or q.n),true) then
+    M.cancelMaterial();return nil,'Group shopping ceiling changed'
+  end
   if f.pending or GetTime()-q.at>=9 or q.total>q.max or q.total>ForeverMarketSpendable(true)
       or not q.direct and q.n~=M.missing(q.id,M.materials()[q.id] or 0) then
     M.cancelMaterial();return nil,'Fund, quantity or price changed'

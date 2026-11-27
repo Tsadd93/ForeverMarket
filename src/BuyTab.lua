@@ -38,6 +38,8 @@ local function available(forCraft)
   return math.max(0,math.min(GetMoney(),f.cash)-reserve)
 end
 ForeverMarketSpendable=available
+local benchmarkCash,benchmarkQueue
+local function scanCash()return benchmarkCash or available() end
 -- Classic materials and consumables observed in the Forever market.
 local staples={
   [2589]=true,[2592]=true,[4306]=true,[4338]=true,[14047]=true, -- cloth
@@ -182,7 +184,7 @@ local function finishCategory(fallback)
     browseFallback=browseFallback+1;scanWake=true;return
   end
   local picks={}
-  local cash=available()
+  local cash=scanCash()
   for _,lead in ipairs(group.items) do
     local price=group.prices[lead.id]
     if fallback or price==0 then
@@ -310,12 +312,14 @@ local function rankCandidates(snapshot,grouped,cash)
   if watchScan=='bench' then
     local key=GetRealmName()..'|'..UnitFactionGroup('player')
     local sets=ForeverMarketDB.benchSets or {};ForeverMarketDB.benchSets=sets
-    local ids=sets[key]
+    local fixed=ForeverMarketDB.trialSets or {};ForeverMarketDB.trialSets=fixed
+    local ids=benchmarkCash and fixed[key] or sets[key]
     if not ids then
       table.sort(eligible,function(a,b)return a.id<b.id end);ids={}
       for _,l in ipairs(eligible) do if l.id>0 then ids[#ids+1]=l.id;if #ids==50 then break end end end
       if #ids==50 then sets[key]=ids end
     end
+    if benchmarkCash and #ids>0 and not fixed[key] then fixed[key]=ids end
     local selected,byID={},{}
     for _,l in ipairs(eligible) do byID[l.id]=l end
     for _,id in ipairs(ids) do if byID[id] then selected[#selected+1]=byID[id] end end
@@ -429,7 +433,7 @@ local function candidates(keepVerified,snapshot)
   if seed and (seed.realmID~=realmID or seed.region~=GetCurrentRegion() or seed.faction~=UnitFactionGroup('player') or GetRealmName():find('Neutral AH',1,true) or time()<seed.at or time()-seed.at>21*86400) then seed=nil end
   if missingScan and not seed then return end
   db=db or {}
-  local cash=available()
+  local cash=scanCash()
   local books=ForeverMarketDB.__depth
   local book=books and books[GetRealmName()..'|'..UnitFactionGroup('player')]
   local now=time()
@@ -624,7 +628,7 @@ local function plan()
     weights[v]=weight; scores[v]=weight*v.edge/v.low
   end
   table.sort(choices,function(a,b)if scores[a]==scores[b] then return a.id<b.id end return scores[a]>scores[b] end)
-  local start=available()
+  local start=scanCash()
   if investScan then start=investmentBudget(start) end
   local full={}
   for _,v in ipairs(choices) do
@@ -644,7 +648,9 @@ local function plan()
       local expectedNet=net-ForeverMarketDepositLoss(n)
       local profit=expectedNet-n*v.low
       local group=ForeverMarketTools and ForeverMarketTools.group and ForeverMarketTools.group(v.itemID or v.id)
-      if n>0 and (not group or group.cap==0 or not group.cap or v.low<=group.cap) and profit>0 and profit*10000>=n*v.low*math.max(ForeverMarketMarginBP(),group and group.margin*100 or 0) and expectedNet>n*v.vendor and v.exit>=ForeverMarketFundHoldPrice(v.variant or v.id,n,dep) then
+      local allowed=not group or not group.cap or group.cap==0 or v.low<=group.cap
+      if group and ForeverMarketTools.groupPurchaseAllowed then allowed=ForeverMarketTools.groupPurchaseAllowed(v.itemID or v.id,group,v.low) end
+      if n>0 and allowed and profit>0 and profit*10000>=n*v.low*math.max(ForeverMarketMarginBP(),group and group.margin*100 or 0) and expectedNet>n*v.vendor and v.exit>=ForeverMarketFundHoldPrice(v.variant or v.id,n,dep) then
         list[#list+1]={v=v,n=n,dep=dep};cash=cash-n*v.low-dep;gain=gain+profit*weights[v]
       end
     end
@@ -677,6 +683,7 @@ local function prepare(row)
   api.StartCommoditiesPurchase(quote.id,quote.n)
 end
 local function buy(row)
+  if benchmarkCash then return end
   if not row.pick or row.pick.inactive or fund().pending or verified[row.pick.v.id]~=row.pick.v or GetTime()-row.pick.v.at>=60 then return end
   local p=row.pick
   stock=nil
@@ -686,7 +693,7 @@ local function buy(row)
   local group=m and m.group and m.group(p.v.itemID or p.v.id)
   local cost=p.n*p.v.low
   local after=netResale(p.v,p.n)-ForeverMarketDepositLoss(p.n)
-  if group and (group.cap or 0)>0 and p.v.low>group.cap or after<=p.n*p.v.vendor or (after-cost)*10000<cost*math.max(ForeverMarketMarginBP(),group and group.margin*100 or 0) then
+  if group and ((group.cap or 0)>0 and p.v.low>group.cap or m.groupPurchaseAllowed and not m.groupPurchaseAllowed(p.v.itemID or p.v.id,group,p.v.low,true)) or after<=p.n*p.v.vendor or (after-cost)*10000<cost*math.max(ForeverMarketMarginBP(),group and group.margin*100 or 0) then
     clearQuote();note('Resale margin changed. Review the shopping list.');return
   end
   local pressed=row.pressed
@@ -710,7 +717,7 @@ local function buy(row)
     clearQuote()
     local f=fund();f.itemOrders=f.itemOrders or {}
     if f.itemOrders[v.auctionID] then return end
-    f.itemOrders[v.auctionID]={id=v.itemID,holding=v.variant,lead=v.id,name=v.name,n=1,forecast=netResale(v,1)-ForeverMarketDepositLoss(1)-v.low,total=v.low,dep=p.dep,auctionID=v.auctionID,at=time()}
+    f.itemOrders[v.auctionID]={run=report and report.run,id=v.itemID,holding=v.variant,lead=v.id,name=v.name,n=1,forecast=netResale(v,1)-ForeverMarketDepositLoss(1)-v.low,total=v.low,dep=p.dep,auctionID=v.auctionID,at=time()}
     local ok,err=pcall(api.PlaceBid,v.auctionID,v.low)
     if not ok then f.itemOrders[v.auctionID]=nil;note(tostring(err))
     else retire(v.id,'Awaiting confirmation') end
@@ -723,7 +730,7 @@ local function buy(row)
     clearQuote();retire(p.v.id,'Offer changed');note('Offer changed. Shopping list updated.');return
   end
   if row.buyTotal~=quote.total then note('Review the updated buy total and click again.');return end
-  fund().pending={forecast=netResale(p.v,p.n)-ForeverMarketDepositLoss(p.n)-quote.total,target=p.v.model and p.v.exit,id=quote.id,n=quote.n,total=quote.total,dep=p.dep,at=time()}
+  fund().pending={run=report and report.run,forecast=netResale(p.v,p.n)-ForeverMarketDepositLoss(p.n)-quote.total,target=p.v.model and p.v.exit,id=quote.id,n=quote.n,total=quote.total,dep=p.dep,at=time()}
   quote=nil
   local ok,err=pcall(api.ConfirmCommoditiesPurchase,p.v.id,p.n)
   if not ok then fund().pending=nil;note(tostring(err)) end
@@ -744,7 +751,16 @@ local function updateReport(state)
     table.insert(db.watchRuns,{at=time(),scope=GetRealmName(),mode=watchScan=='market' and 'Radar' or watchScan=='bench' and 'Benchmark' or 'Watch',size=report.benchSize,ids=report.benchIDs,hits=report.benchHits,elapsed=report.elapsed,first=firstResult,checked=checked,unanswered=unanswered,requests=requests})
     if #db.watchRuns>20 then table.remove(db.watchRuns,1) end
   end
-  if state=='complete' or state=='stopped' or state=='closed' then report.finished=true end
+  if state=='complete' or state=='stopped' or state=='closed' then
+    report.finished=true
+    local f=fund();f.sessions=f.sessions or {}
+    if report.run then
+      local hits=0;for _ in pairs(report.hitIDs or {}) do hits=hits+1 end
+      f.sessions[report.run]={at=report.at,cash=report.cash,target=report.target,mode=report.mode,state=state,ids=report.benchIDs,found=report.benchHits,
+        checked=checked,missed=unanswered,hits=hits,elapsed=report.elapsed,first=firstResult}
+      f.sessions[report.run-500]=nil
+    end
+  end
 end
 local function render()
   if not panel or not panel:IsVisible() then return end
@@ -753,6 +769,7 @@ local function render()
   for _,p in ipairs(list) do
     local id=p.v.id
     active[id]=true
+    if report then report.hitIDs=report.hitIDs or {};report.hitIDs[id]=true end
     if watchScan=='bench' then report.benchHits=report.benchHits or {};report.benchHits[id]=true end
     local alerted=watchAlerts[id]
     if watchScan and (not alerted or p.v.low<alerted.price or p.n>alerted.n) then
@@ -775,7 +792,7 @@ local function render()
       list[#list+1]={v=saved.pick.v,n=saved.pick.n,inactive=reason}
     end
   end
-  balance:SetText('Fund cash  '..ForeverMarketCoins(fund().cash))
+  balance:SetText(benchmarkCash and ('Test fund '..ForeverMarketCoins(benchmarkCash)) or ('Fund cash  '..ForeverMarketCoins(fund().cash)))
   if #fundButtons>0 and (not fundButtons.updated or GetTime()-fundButtons.updated>=.5) then
     fundButtons.updated=GetTime()
     local sums=ForeverMarketTools.fundSummary()
@@ -796,9 +813,9 @@ local function render()
       row.btn:SetScript('OnMouseDown',function()
         row.pressed=row.pick and {id=row.pick.v.id,n=row.pick.n,total=row.buyTotal,auctionID=row.pick.v.auctionID}
       end)
-      row.btn:SetText('Buy');row.btn:SetScript('OnEnter',function()prepare(row)end);row.btn:SetScript('OnClick',function()buy(row)end);rows[i]=row
+      row.btn:SetText('Buy');row.btn:SetScript('OnEnter',function()if not benchmarkCash then prepare(row) end end);row.btn:SetScript('OnClick',function()buy(row)end);rows[i]=row
     end
-    row.pick=list[i];row.itemRef=row.pick and (row.pick.v.link or "item:"..row.pick.v.id);row.hover:SetShown(row.pick~=nil);row.btn:SetShown(row.pick~=nil);row.btn:SetEnabled(row.pick~=nil and not row.pick.inactive and not fund().pending)
+    row.pick=list[i];row.itemRef=row.pick and (row.pick.v.link or "item:"..row.pick.v.id);row.hover:SetShown(row.pick~=nil);row.btn:SetShown(row.pick~=nil);row.btn:SetEnabled(not benchmarkCash and row.pick~=nil and not row.pick.inactive and not fund().pending)
     row.name:SetText(row.pick and ForeverMarketRowIcon(row.pick.v.itemID or row.pick.v.id,row.pick.v.link or C_Item.GetItemNameByID(row.pick.v.id) or 'Item '..row.pick.v.id) or '')
     local p=row.pick
     local live=p and quote and quote.id==p.v.id and quote.n==p.n and GetTime()-quote.at<8 and quote.total
@@ -806,7 +823,7 @@ local function render()
     local itemName=p and C_Item.GetItemNameByID(p.v.itemID or p.v.id)
     row.marketId=p and (p.v.itemID or p.v.id)
     row.priceReason=p and not p.inactive and ("Buy "..p.n.." x "..ForeverMarketCoins(p.v.low).." / exit per item "..ForeverMarketCoins(p.v.exit).." / deposit reserved "..ForeverMarketCoins(p.dep or 0)) or nil
-    if row.priceReason and p.v.demandReason then row.priceReason=row.priceReason..' / '..p.v.demandReason end
+
     if row.priceReason and p.v.starter then row.priceReason='Starter estimate '..date('%b %d',ForeverMarketStarter.at)..' / live offer checked. '..row.priceReason end
     if row.priceReason and itemName and ForeverMarketTools and ForeverMarketTools.marketOutcomes then
       local outcomes=ForeverMarketTools.marketOutcomes(itemName)
@@ -820,7 +837,7 @@ local function render()
       row.priceReason=("Historical replay: %d/%d dips recovered. "):format(p.v.model.wins,p.v.model.trials)..(paper or '')..row.priceReason
     end
     row.saleText=itemName and ForeverMarketTools and ForeverMarketTools.saleLabel and ForeverMarketTools.saleLabel(itemName)
-    row.qty:SetText(p and p.n or '')
+    row.qty:SetText(p and p.n or '');if p and row.priceReason then row.priceReason='Quantity '..p.n..': '..(p.v.demandReason or 'Sized to available supply and cash')..'. '..row.priceReason end
     row.cost:SetText(row.buyTotal and ForeverMarketCoins(row.buyTotal) or '')
     local resale=row.buyTotal and netResale(p.v,p.n)
     row.profit:SetText(p and (p.inactive or ForeverMarketCoins(resale-row.buyTotal-ForeverMarketDepositLoss(p.n))) or '')
@@ -835,7 +852,7 @@ local function render()
   end
   if fund().pending then note('Waiting for purchase confirmation.')
   elseif quote then return
-  elseif available()==0 then note('No trading cash available for a purchase.')
+  elseif scanCash()==0 then note('No trading cash available for a purchase.')
   elseif missingScan then note('Building local history.');detail:SetText('Browse > Below vendor works after a Market Scan.')
   elseif investScan and totalLeads==0 then note('Invest: no qualifying recovery patterns');detail:SetText(('Best coverage: %s, %d days / 14 minimum; repeated rebounds required.'):format(report.bestItem and C_Item.GetItemNameByID(report.bestItem) or 'none',report.bestDays or 0))
   elseif totalLeads==0 then detail:SetText(("Insufficient history: %d item records"):format(report and report.thinHistory or 0));note(('No eligible candidates · %d junk filtered · %d uncached'):format(junkCount,unknownCount))
@@ -856,7 +873,12 @@ local function render()
     if unknownCount>0 then progress=progress..(' | %d uncached'):format(unknownCount) end
     if buyCount>0 then note((investScan and 'Invest / ' or '')..progress);if completed then detail:SetText(('Complete · %d shopping list items'):format(buyCount)) end
     elseif browse or categoryIndex<=#categories or search or cursor<=#leads then note(progress)
-    else note(completed and ('Complete / no qualifying buys / '..unanswered..' unanswered') or progress);detail:SetText(('Short history %d / over budget %d / spread %d / no supply %d'):format(report.thinHistory or 0,report.overBudget or 0,report.weakSpread or 0,report.noSupply or 0)) end
+    else note(completed and ('Complete / no qualifying buys / '..unanswered..' unanswered') or progress);local reason,most='No eligible live offers',0
+      for _,pair in ipairs({{'Too little history',report.thinHistory},{'Over budget',report.overBudget},{'Margin too small',report.weakSpread},{'No supply',report.noSupply},{'Already stocked',report.stockSkipped}}) do
+        if (pair[2] or 0)>most then reason,most=pair[1],pair[2] end
+      end
+      local ex=report.repostExample or report.misses and report.misses[1]
+      detail:SetText(reason..' ('..most..')'..(ex and (' / '..(C_Item.GetItemNameByID(ex.id) or ex.id)..': '..ex.reason) or '')) end
   end
 end
 local function inspect(id)
@@ -901,7 +923,7 @@ local function inspect(id)
     v.edge=v.exit*ForeverMarketKeepBP()/10000-d.low
     local checkedQty=v.model and 1 or d.lowQty
     local deposit=resaleDeposit(v,checkedQty) or 0
-    screenOffer(id,d.low*checkedQty,netResale(v,checkedQty)-ForeverMarketDepositLoss(checkedQty),available(),deposit)
+    screenOffer(id,d.low*checkedQty,netResale(v,checkedQty)-ForeverMarketDepositLoss(checkedQty),scanCash(),deposit)
     if v.exit*ForeverMarketKeepBP()>=d.low*(10000+ForeverMarketMarginBP()) then
       v.low=d.low;v.qty=d.lowQty;v.clearTier=not v.model;v.at=GetTime();verified[id]=v
       if remembered[id] then remembered[id].reason=nil end
@@ -952,9 +974,9 @@ local function inspectItems(key)
         -- Reserve one full vendor value, with a one-silver minimum.
         local dep=math.max(100,vendor)
         local profit=ForeverMarketSaleNet(exit)-r.buyoutAmount-ForeverMarketDepositLoss(1)
-        screenOffer(lead.id,r.buyoutAmount,r.buyoutAmount+profit,available(),dep)
+        screenOffer(lead.id,r.buyoutAmount,r.buyoutAmount+profit,scanCash(),dep)
         if profit>0 and profit*10000>=r.buyoutAmount*ForeverMarketMarginBP() and
-           r.buyoutAmount+dep<=available() and ForeverMarketSaleNet(exit)-ForeverMarketDepositLoss(1)>vendor and
+           r.buyoutAmount+dep<=scanCash() and ForeverMarketSaleNet(exit)-ForeverMarketDepositLoss(1)>vendor and
            exit>=ForeverMarketFundHoldPrice(variant,1,dep) and (not best or profit>best.edge) then
           best={id=lead.id,itemID=r.itemKey.itemID,ref=lead.ref,auctionID=r.auctionID,searchKey=key,
             link=r.itemLink,name=name or r.itemLink:match('%[(.-)%]'),variant=variant,dep=dep,exit=exit,low=r.buyoutAmount,
@@ -1002,7 +1024,7 @@ local function tick(refreshUI)
       note('Checking item quality · '..#unresolved..' pending');detail:SetText('');return
     end
     unknownCount=#unresolved;pendingFilter=nil
-    rankCandidates(f.snapshot,f.grouped,available())
+    rankCandidates(f.snapshot,f.grouped,scanCash())
   end
   if not browse and not search and not quote and not fund().pending and (not recheckedLast or cursor>#leads) then
     for _,id in ipairs(displayOrder) do
@@ -1023,8 +1045,8 @@ local function tick(refreshUI)
     search=nil
   end
   scanWait=nil
-  if not search and not quote and not fund().pending and available()>0 and cursor>#leads then advanceCategory() end
-  if not browse and not search and not quote and not fund().pending and available()>0 and cursor<=#leads then
+  if not search and not quote and not fund().pending and scanCash()>0 and cursor>#leads then advanceCategory() end
+  if not browse and not search and not quote and not fund().pending and scanCash()>0 and cursor<=#leads then
     if not api.IsThrottledMessageSystemReady() then
       scanWait='Waiting for the auction house'
       if refreshUI then render() end
@@ -1051,7 +1073,7 @@ local function tick(refreshUI)
   end
   if quote and GetTime()-quote.at>9 then clearQuote() end
 
-  if not search and not quote and not fund().pending and (available()==0 or not browse and categoryIndex>#categories and cursor>#leads) then
+  if not search and not quote and not fund().pending and (scanCash()==0 or not browse and categoryIndex>#categories and cursor>#leads) then
     running=false;completed=true
   end
   if refreshUI then render() end
@@ -1096,6 +1118,7 @@ local function create()
   local target=CreateFrame('EditBox',nil,panel,'InputBoxTemplate')
   target:SetSize(38,24);target:SetPoint('TOPLEFT',390,0);target:SetAutoFocus(false)
   local function start()
+    if watchScan~="bench" then benchmarkCash=nil;benchmarkQueue=nil end
     local pct=tonumber(target:GetText())
     if not pct or pct~=pct or pct<0 or pct>1000 then
       fundMessageUntil=GetTime()+5;note('Enter a target between 0 and 1000%.');return
@@ -1107,15 +1130,20 @@ local function create()
     verified={};search=nil;browse=nil;quote=nil
     startedAt=GetTime();firstResult=nil;requests=0;snapshotMode=false
     stock=nil
-    report={at=time(),target=ForeverMarketMarginBP(),cash=available(),source='browse'}
+    local f=fund();f.runSequence=(f.runSequence or 0)+1
+    report={run=f.runSequence,at=time(),target=ForeverMarketMarginBP(),cash=scanCash(),source='browse',mode=watchScan or (investScan and 'Invest' or 'Buy')}
     ForeverMarketDB.lastBuyScan=report
     awaitingBulk=false
     waitingSince=not watchScan and ForeverMarketSnapshot and startedAt or nil
     if not waitingSince then candidates() end
     tick(true)
   end
-  function ForeverMarketBenchmark()
+  function ForeverMarketBenchmark(gold)
     if not panel:IsVisible() or running or fund().pending or quote then print('Forever Market: open Market Buy and stop any current scan before benchmarking.');return end
+    benchmarkQueue=nil
+    if gold=='all' then benchmarkQueue={5,50,target=tonumber(target:GetText())};gold=1 end
+    if gold and gold~=1 and gold~=5 and gold~=50 then return end
+    benchmarkCash=gold and gold*10000
     investScan=false;watchScan='bench';watchAlerts={};start()
   end
   local function control(text,x,fn)
@@ -1146,6 +1174,7 @@ local function create()
   end)
   if resume.ClearAllPoints then resume:ClearAllPoints() end;resume:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-73,-57)
   local stopButton=control('Stop',511,function()
+    benchmarkQueue=nil
     pausedMarket=nil;watchScan=false;running=false;completed=false;search=nil;browse=nil;clearQuote();fundMessageUntil=0;render()
   end)
   control('Restart',580,start)
@@ -1172,6 +1201,7 @@ local function create()
     edit:SetText(fund().cash/10000);target:SetText(ForeverMarketMarginBP()/100);render()
   end)
   panel:SetScript('OnHide',function()
+    benchmarkQueue=nil
     if running and not watchScan then
       pausedMarket=GetRealmName()
       if search then search.retried=nil;search.pageCount=nil;search.waitKey=nil;table.insert(leads,cursor,search) end
@@ -1190,6 +1220,11 @@ local function create()
     if refreshUI then uiElapsed=0 end
     local retry=completed and next(retryPool)~=nil
     resume:SetText(retry and 'Retry' or 'Resume');resume:SetShown(pausedMarket~=nil or retry);startButton:SetEnabled(not running);stopButton:SetEnabled(running or watchScan)
+    if benchmarkQueue and watchScan=='bench' and completed and report.finished and not running then
+      local gold=table.remove(benchmarkQueue,1)
+      if gold and benchmarkQueue.target==tonumber(target:GetText()) then benchmarkCash=gold*10000;start();return end
+      benchmarkQueue=nil
+    end
     if watchScan and watchScan~='bench' and completed and not running and not fund().pending and not quote and GetTime()>=watchAgain then watchAgain=GetTime()+60;start();return end
     if running then tick(refreshUI) elseif refreshUI then
       if quote and GetTime()-quote.at>9 then clearQuote() end

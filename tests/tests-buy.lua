@@ -496,6 +496,16 @@ do
   dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001);update()
   for i=1,5 do elapsed=elapsed+1;panel:OnUpdate(1) end
   assert(ForeverMarketDB.watchRuns[#ForeverMarketDB.watchRuns].mode=='Benchmark')
+  local beforeCash=ForeverMarketTradingFund().cash
+  for _,gold in ipairs({1,5,50}) do
+    panel:OnHide();panel:OnShow();ForeverMarketBenchmark(gold);update()
+    dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001);update()
+    for i=1,5 do elapsed=elapsed+1;panel:OnUpdate(1) end
+    local scan=ForeverMarketDB.lastBuyScan
+    local outcome=ForeverMarketTradingFund().sessions[scan.run]
+    assert(outcome.cash==gold*10000 and outcome.hits==0 and outcome.ids[1]==41001)
+    assert(ForeverMarketTradingFund().cash==beforeCash)
+  end
   ForeverMarketStarter.realmID=123;ordered={};start:OnClick();update();assert(#ordered==0)
   ForeverMarketStarter.realmID=6926;ForeverMarketStarter.at=time()-22*86400
   start:OnClick();update();assert(#ordered==0)
@@ -530,7 +540,7 @@ do
   saved.held={};saved.itemOrders={};saved.pending=nil
   ForeverMarketRisk={cutBP=0,lostDepositPerUnit=0};ForeverMarketDB.buyTargetBP=500
   ForeverMarketTools=nil
-  for _,budget in ipairs({10000,30000,100000}) do
+  for _,budget in ipairs({10000,30000,50000,100000,500000}) do
     saved.cash=budget
     local deals={}
     for i,terms in ipairs({{.61,.40},{.5,.30},{.5,.30}}) do
@@ -543,5 +553,5 @@ do
     local gain=0;for _,p in ipairs(picks) do gain=gain+(p.v.exit-p.v.low)*p.n end
     assert(gain==budget*.6)
   end
-  print('PASS: 1g, 3g and 10g baskets earn 60% projected against 40% previous greedy/single baseline')
+  print('PASS: 1g, 3g, 5g, 10g and 50g baskets earn 60% projected against 40% previous greedy/single baseline')
 end

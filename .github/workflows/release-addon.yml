@@ -5,6 +5,7 @@ on:
     paths:
       - ForeverMarket.toc
       - src/**
+      - vendor/**
       - package.py
       - .github/workflows/release-addon.yml
   workflow_dispatch:

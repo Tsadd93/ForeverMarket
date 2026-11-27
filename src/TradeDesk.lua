@@ -293,13 +293,16 @@ function M.openDesk()
         status:SetText(ok and 'Checking live offer. Review the total, then confirm.' or why);showResults()
       end)
       local hit=CreateFrame('Frame',nil,panel);hit:SetPoint('TOPLEFT',10,y+4);hit:SetSize(395,23);hit:EnableMouse(true)
-      hit:SetScript('OnEnter',function(self)if r.data then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink('item:'..r.data.id);M.explain(GameTooltip,r.data.id)
+      hit:SetScript('OnEnter',function(self)if r.data then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink('item:'..r.data.id);M.explain(GameTooltip,r.data.id);GameTooltip:AddLine("Right-click to set a price alert.")
         local n=tonumber(fields.qty:GetText())
         if n and n>=1 and n==math.floor(n) then
           local tiers={};local cost=M.cost(r.data.id,n,tiers)
           if cost then GameTooltip:AddLine('Observed purchase tiers: '..table.concat(tiers,' + '),1,.85,.35,true) end
         end
         GameTooltip:Show() end end)
+      hit:SetScript('OnMouseUp',function(_,key)
+        if key=='RightButton' and r.data then M.openTools('Watches',r.data.id) end
+      end)
       hit:SetScript('OnLeave',function()GameTooltip:Hide()end);rows[i]=r
     end
     status=label(panel,12,-90,635);pager=label(panel,92,-323,72)
@@ -324,6 +327,11 @@ function M.openDesk()
     panel:HookScript('OnHide',function()if M.quote and M.quote.direct then M.cancelMaterial() end;if M.groupsPanel then M.groupsPanel:Hide() end end)
   end
   panel:Show();search()
+end
+function M.openOffer(id,cap)
+  M.openDesk()
+  fields.term:SetText(tostring(id));fields.max:SetText(cap..'c');fields.level:SetText('');fields.quality:SetText('');fields.qty:SetText('1')
+  vendor=false;usable=false;watch=false;search()
 end
 function M.openVendorDeals()
   M.openDesk()

@@ -198,11 +198,17 @@ SlashCmdList.FOREVERMARKET=function(msg)
   if msg=='preview' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview')
   elseif msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()
   elseif msg=='manage' and ForeverMarketTools and ForeverMarketTools.openManager and AuctionHouseFrame and AuctionHouseFrame:IsShown() then ForeverMarketTools.openManager()
+  elseif msg=='watch' then ForeverMarketTools.openTools('Watches')
+  elseif msg=='session' then ForeverMarketTools.openTools('Sell session')
+  elseif msg=='trials' then ForeverMarketTools.openTools('Scan results')
   elseif msg=='results' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Results')
   elseif (msg=='tools' or msg=='home') and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Home')
   elseif msg=='farm' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Farming')
   elseif msg=='scan' and ForeverMarketScan then ForeverMarketScan()
   elseif msg=='' or msg=='export' then export(false)
+  elseif msg:match('^benchmark %d+$') then
+    local g=tonumber(msg:match('%d+'))
+    if ForeverMarketBenchmark and (g==1 or g==5 or g==50) then ForeverMarketBenchmark(g) else print('Open Market Buy, then use /fm benchmark 1, 5 or 50.') end
   elseif msg=='benchmark' then
     if ForeverMarketBenchmark then ForeverMarketBenchmark() else print('Open Market Buy to run the live benchmark.') end
   elseif msg=='benchlist' and ForeverMarketTools.openTools then

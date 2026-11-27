@@ -295,6 +295,7 @@ local function paint()
     row.quote=q;row.reviewedUnit=s and q and price(q,s)
   end
 end
+local post
 function ForeverMarketPostingPreview()
   if managing then return nil,'Finish editing protected items first.' end
   if not panel or not panel:IsVisible() then return nil,'Open Market Sell at an auctioneer to check your bags.' end
@@ -308,12 +309,23 @@ function ForeverMarketPostingPreview()
         if r.needsCheck then s.checking=s.checking+1 else s.hold=s.hold+1 end
       elseif n and p then state='Post '..n..' for '..ForeverMarketCoins(n*p);s.ready=s.ready+1;s.gross=s.gross+n*p
       else state='Waiting for price';s.checking=s.checking+1 end
-      s.rows[#s.rows+1]={name=slot.link,state=state}
+      local offer={name=slot.link,state=state,ready=not r.needsCheck and not r.hold and not slot.locked and not slot.holdReason and n and p}
+        if offer.ready then
+          local bag,index,key,count=slot.bag,slot.slot,slot.key,slot.count
+          offer.post=function()
+            local live=r.slot
+            if not panel:IsVisible() or not live or live.key~=key or live.bag~=bag or live.slot~=index or live.count~=count or r.hold or r.override or quantity(live)~=n or r.reviewedUnit~=p then
+              return 'Stack or price changed. Review the updated row.'
+            end
+            post(r)
+          end
+        end
+        s.rows[#s.rows+1]=offer
     end
   end
   return s
 end
-local function post(row)
+post=function(row)
   local old=row.slot;if (row.hold and not row.override) or pending or not old then return end
   if managing or blacklist()[old.k.itemID] then return end
   local s=inspect(old.bag,old.slot);local q=row.quote

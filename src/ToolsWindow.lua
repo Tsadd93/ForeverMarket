@@ -3,7 +3,7 @@ local f,field,second,hint,summary,message,pager,viewport,heading,emblem
 local rows,actions,chart,nav,cards={}, {}, {},{},{}
 local resultDays,invest=7,false
 local mode,page,days='Basket',1,7
-local preview,chain,lastQuote
+local preview,chain,lastQuote,compareID
 local content={}
 local function coins(n) return n and ForeverMarketCoins(math.floor(n)) or 'unknown' end
 local function itemName(id) return C_Item.GetItemNameByID(id) or ('Item '..id) end
@@ -88,19 +88,38 @@ local function imports()
   action(1,'Preview',function()preview=M.importPreview(field:GetText(),second:GetText());preview.raw=field:GetText();page=1 end)
   action(2,'Apply',function()
     if not preview or preview.raw~=field:GetText() or preview.list~=second:GetText() then return 'Preview the current input first.' end
-    local result=M.applyPreview(preview);preview=nil;return result
+    local result=preview.migration and M.applyMigration(preview) or M.applyPreview(preview);preview=nil;return result
   end)
   action(3,'Read addon list',function()
     local raw,err=M.readAuctionatorList(second:GetText())
     if not raw then return err end
     field:SetText(raw);preview=M.importPreview(raw,second:GetText());preview.raw=raw;page=1
   end)
+  action(4,'Read TSM profile',function()
+    local p,err=M.previewTSM(second:GetText());preview=p;if p then p.raw=field:GetText();page=1 end;return err
+  end)
   if preview then
+    if preview.migration then hint:SetText("Review mapped rules and skips. DBMarket percentages use our realm’s median bulk ask.") end
     summary:SetText(preview.kind..' into '..preview.list..' / '..#preview.skipped..' skipped')
+    if #preview.skipped>0 then
+      action(3,preview.showSkipped and 'Show items' or 'Show skipped',function()preview.showSkipped=not preview.showSkipped;page=1 end)
+      if preview.showSkipped then for _,v in ipairs(preview.skipped) do add('Needs review',v) end;return end
+    end
     for _,r in ipairs(preview.filters or {}) do add('Search: '..r.term,'Qty '..r.units..' each / maximum '..coins(r.max)) end
-    for id,n in pairs(preview.items) do add(itemName(id),'Keep '..n) end
-    for _,s in ipairs(preview.skipped) do add('Skipped',s) end
-  else summary:SetText('Supports item-only TSM groups and Auctionator exact item names or IDs.') end
+    for id,n in pairs(preview.items) do
+      local path=preview.paths and preview.paths[id]
+      if path then
+        local settings={};for k,v in pairs(preview.rules[path]) do settings[#settings+1]=k..' '..((k=='cap' or k=='fixedFloor') and coins(v) or tostring(v)) end
+        local rule=preview.rules[path]
+        table.sort(settings)
+        add(function()return itemName(id)end,function()
+          local floor,why=M.policyFloor(id,true,rule)
+          return path..' / '..(#settings>0 and table.concat(settings,', ') or 'Items only')..(why and (' / '..why) or floor>0 and (' / floor '..coins(floor)) or '')
+        end)
+      else add(itemName(id),'Keep '..n) end
+    end
+    if #preview.skipped>0 then add('Needs review',#preview.skipped..' settings or items. Choose Show skipped for details.') end
+  else summary:SetText('For TSM settings, enter the profile name at right and click Read TSM profile.') end
 end
 local function logistics()
   hint:SetText('Destination character at left. Optional item ID and personal keep quantity at right.')
@@ -172,6 +191,11 @@ end
 local function home()
   hint:SetText('Choose what you came to do. Buying and posting always require your click.')
   summary:SetText('At the auction house')
+  action(1,'Selling session',function()selectTab('Sell session')end)
+  action(2,'Price watches',function()selectTab('Watches')end)
+  action(3,'Realm coverage',function()selectTab('Realm coverage')end)
+  action(4,'Scan outcomes',function()selectTab('Scan results')end)
+  add('Disenchant deals','Compare auction prices with your observed material yields.','Compare',function()selectTab('Conversions')end)
   local s=ForeverMarketPostingPreview and ForeverMarketPostingPreview()
   local deals=M.visibleDeals
   local count=deals and GetTime()-deals.at<60 and deals.scope==ForeverMarketVenueRealm() and deals.count
@@ -185,6 +209,7 @@ local function home()
   if M.saleTotals and AuctionHouseFrame and AuctionHouseFrame:IsShown() then local _,mail,_,_,_,pending=M.saleTotals()
     if (mail or 0)>0 or (pending or 0)>0 then add('Collect sale mail',coins(mail or 0)..' last seen in mail / '..coins(pending or 0)..' estimated pending') end
   end
+  add('Group rules','Preview a selling or stocking preset for your items.','Presets',function()selectTab('Rule presets')end)
   add('Buy supplies','Set the quantity you want to keep for each item.','Basket',function()selectTab('Basket')end)
 end
 local function postingPreview()
@@ -219,14 +244,25 @@ end
 refresh=function()
   if not f or not f:IsShown() then return end
   content={};for _,c in ipairs(cards) do c:Hide() end;for _,t in pairs(chart) do t:Hide() end;for _,b in ipairs(actions) do b:Hide() end
-  local inputs=mode~='Results' and mode~='Home' and mode~='Preview'
+  local special=mode=='Run detail' or mode=='Conversion detail' or mode=='Comparison' or mode=='Rule presets' or mode=='Watches' or mode=='Conversions' or mode=='Realm coverage' or mode=='Scan results' or mode=='Sell session'
+  local inputs=mode~='Results' and mode~='Home' and mode~='Preview' and (not special or mode=='Watches' or mode=='Comparison' or mode=='Rule presets')
   field:SetShown(inputs);if viewport then viewport:SetShown(inputs) end;second:SetShown(inputs)
   if heading then
     heading:SetShown(not inputs);emblem:SetShown(not inputs)
-    heading:SetText(mode=='Home' and 'Auction house' or mode=='Results' and 'Trading results' or 'Posting preview')
+    heading:SetText(special and mode or mode=='Home' and 'Auction house' or mode=='Results' and 'Trading results' or 'Posting preview')
     emblem:SetTexture(mode=='Preview' and 'Interface\\Icons\\INV_Letter_15' or mode=='Home' and 'Interface\\Icons\\INV_Misc_Coin_01' or 'Interface\\Icons\\INV_Misc_Book_09')
   end
-  if mode=='Home' then home() elseif mode=='Preview' then postingPreview() elseif mode=='Results' then results() elseif mode=='Basket' then basket() elseif mode=='Import' then imports() elseif mode=='Mail & bank' then logistics()
+  if special then
+    M.renderSessionPage(mode,{hint=hint,summary=summary,field=field,second=second,coins=coins,name=itemName,itemID=itemID,add=add,action=action,openAH=openAH,page=selectTab,compareID=compareID,presetInput=field:GetText(),
+      offer=function(id,cap)
+        if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
+        f:Hide();M.openOffer(id,cap)
+      end,
+      review=function()
+        if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
+        f:Hide();M.openAuctionReview()
+      end})
+  elseif mode=='Home' then home() elseif mode=='Preview' then postingPreview() elseif mode=='Results' then results() elseif mode=='Basket' then basket() elseif mode=='Import' then imports() elseif mode=='Mail & bank' then logistics()
   elseif mode=='Supply plan' then chains() elseif mode=='Farming' then farming()
   else
     hint:SetText('Item ID or name at left. Daily price and supply use separate scales; empty days have no observation.')
@@ -246,18 +282,20 @@ refresh=function()
     end
     if row.bg then row.bg:SetShown(i<=per) end
     local d=i<=per and content[(page-1)*per+i]
-    row.left:SetText(d and d.a or '');row.right:SetText(d and d.b or '')
+    row.left:SetText(d and (type(d.a)=='function' and d.a() or d.a) or '');row.right:SetText(d and (type(d.b)=='function' and d.b() or d.b) or '')
     row.btn:SetShown(d and d.label and true or false)
     if d and d.label then row.btn:SetText(d.label);row.btn:SetScript('OnClick',function()local msg=d.fn();refresh();if msg then message:SetText(msg) end end) end
   end
 end
 selectTab=function(tab,value)
+  if M.monitorPrices then M.monitorPrices(false) end
   M.cancelMaterial();mode=tab;page=1;
   for key,b in pairs(nav) do if b.SetEnabled then b:SetEnabled(key~=tab) end end
   preview=nil;chain=nil;field:SetText(value and tostring(value) or '');second:SetText(tab=='Supply plan' and '1' or '')
+  if tab=='Comparison' or tab=='Run detail' or tab=='Conversion detail' then compareID=value;field:SetText('') end
   if tab=='Basket' then M.restockList();field:SetText(M.account().manager.active) end
   if tab=='Import' then second:SetText('Imported') end
-  field:SetMultiLine(tab=='Import');if viewport then viewport:SetVerticalScroll(0) end;field:ClearFocus();second:ClearFocus()
+  field:SetMultiLine(tab=='Import' or tab=='Comparison');if viewport then viewport:SetVerticalScroll(0) end;field:ClearFocus();second:ClearFocus()
   message:SetText('');refresh()
   if tab=='Import' and value then field:SetFocus();field:HighlightText() end
 end
@@ -304,11 +342,27 @@ function M.openTools(tab,value)
     button(18,-373,74,'Previous',function()page=page-1;refresh()end);pager=font(99,-378,55)
     button(154,-373,75,'Next',function()page=page+1;refresh()end)
     button(563,-372,100,'Refresh',refresh);field:SetScript('OnEnterPressed',function(self)self:ClearFocus();refresh()end)
-    f:SetScript('OnHide',function()if M.quote and M.quote.trip then M.cancelMaterial() end end)
-    local t=0
+    f:SetScript('OnHide',function()if M.monitorPrices then M.monitorPrices(false) end;if M.quote and (M.quote.trip or M.quote.watch) then M.cancelMaterial() end end)
+    local t,sellUpdate=0,0
     f:SetScript('OnUpdate',function(_,dt)
+      if mode=='Realm coverage' and M.coverageTick() then refresh() end
       if mode=='Basket' and M.stepBasket then M.stepBasket() end
       t=t+dt;if t<.4 then return end;t=0
+      if mode=='Watches' then
+        M.watchTick()
+        local q=M.quote and M.quote.watch and M.quote
+        if q and GetTime()-q.at>=9 then M.cancelMaterial();q=nil end
+        if q and q.total and not q.counted and q.total<=q.max then
+          local rule=M.session().watches[q.id]
+          if rule then rule.quoted=(rule.quoted or 0)+1 end
+          q.counted=true
+        end
+        local state=q and (q.total or 'checking')
+        if M.watchChanged or state~=lastQuote then M.watchChanged=false;lastQuote=state;refresh() end
+      end
+      if mode=='Sell session' and not (IsMouseButtonDown and IsMouseButtonDown()) and (M.mailChanged or GetTime()>=sellUpdate) then
+        M.mailChanged=false;sellUpdate=GetTime()+1;refresh()
+      end
       if mode=='Mail & bank' and M.logisticsDirty then M.logisticsDirty=false;refresh() end
       local q=M.quote;local key=q and q.trip and (q.total or 'pending')
       if mode=='Basket' and (key~=lastQuote or M.tripDirty) then lastQuote=key;M.tripDirty=nil;refresh() end

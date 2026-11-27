@@ -69,6 +69,10 @@ function M.readAuctionatorList(list)
   return table.concat(items,'\n')
 end
 function M.importPreview(raw,destination)
+  if M.decodeGroup and type(destination)=='string' and #destination>0 and #destination<=48 then
+    local ok,migration=pcall(M.decodeGroup,raw,destination)
+    if ok and migration then return migration end
+  end
   local p={list=destination,items={},filters={},skipped={},kind='Auctionator'}
   if raw:find('i:%d') then p.kind='TSM' end
   if #raw>32000 then p.skipped[1]='Input exceeds 32000 characters';return p end

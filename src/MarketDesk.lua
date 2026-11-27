@@ -92,6 +92,10 @@ local function missingStock()
   local needs={}
   for id,n in pairs(M.materials()) do needs[id]=n end
   for id,r in pairs(M.restockList()) do needs[id]=math.max(needs[id] or 0,r.keep) end
+  local desk=M.account().desk
+  for id,group in pairs(desk and desk.groups or {}) do
+    if group.bankTarget then needs[id]=math.max(needs[id] or 0,group.bankTarget) end
+  end
   for id,n in pairs(needs) do needs[id]=math.max(0,n-M.bagCount(id)) end
   return needs
 end
@@ -169,9 +173,9 @@ function M.withdraw(row)
 end
 
 local floors={}
-function M.policyFloor(id,force)
-  local group=M.group(id)
-  if not group or (group.craftPct or 0)+(group.realmPct or 0)==0 then return 0 end
+function M.policyFloor(id,force,preview)
+  local group=preview or M.group(id)
+  if not group or (group.craftPct or 0)+(group.realmPct or 0)==0 then return group and group.fixedFloor or 0 end
   local cached=floors[id]
   if not force and cached and cached.group==group and GetTime()-cached.at<3 then return cached.floor,cached.why end
   local floor,why=0,nil
@@ -207,7 +211,8 @@ function M.policyFloor(id,force)
     end
     if cheapest then floor=math.max(floor,math.ceil(cheapest*group.craftPct/100)) else why='Need priced recipe for posting rule' end
   end
-  floors[id]={group=group,at=GetTime(),floor=floor,why=why}
+  floor=math.max(floor,group.fixedFloor or 0)
+  if not preview then floors[id]={group=group,at=GetTime(),floor=floor,why=why} end
   return floor,why
 end
 function M.stockPostRestriction(id,qty,unit,force,incoming)

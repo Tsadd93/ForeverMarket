@@ -127,6 +127,7 @@ local function create()
       GameTooltip:SetOwner(frame,'ANCHOR_RIGHT');GameTooltip:AddLine(d.name)
       if d.key then
         local r=M.account().recipes[d.key]
+        GameTooltip:AddLine("Right-click to watch all reagent prices.")
         if d.estimate then
           local e=d.estimate
           if M.saleLabel then GameTooltip:AddLine(M.saleLabel(r.name)) end
@@ -147,6 +148,12 @@ local function create()
         if M.transferPlan then local plan=M.transferPlan(d.id,math.max(0,(M.materials()[d.id] or 0)-M.bagCount(d.id)-(M.account().transit[d.id] or 0)));GameTooltip:AddLine(plan,1,.85,.35,true) end
       end
       GameTooltip:Show()
+    end)
+    row.hover:SetScript('OnMouseUp',function(_,key)
+      if key=='RightButton' and row.data and row.data.key then
+        local recipe=M.account().recipes[row.data.key]
+        if recipe and M.watchRecipe then notice:SetText(M.watchRecipe(recipe));M.openTools('Watches') end
+      end
     end)
     row.hover:SetScript('OnLeave',function() GameTooltip:Hide() end)
     rows[i]=row
