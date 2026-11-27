@@ -458,3 +458,49 @@ invest:OnClick();update();dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001)
 assert(not observedRows[1].pick or observedRows[1].pick.inactive)
 print('PASS: investment replay, prior-day isolation, decline rejection, partial-tier purchase, budget and live price gate')
 
+
+-- Close during a live request, then resume without advancing past that item.
+do
+  C_AuctionHouse.GetCommoditySearchResultInfo=function()return {unitPrice=70,quantity=100} end
+  invest:OnClick();update()
+  local count=#ordered
+  panel:OnHide();panel:OnShow()
+  local resume
+  for _,b in ipairs(buttons) do if b.text=='Resume' then resume=b end end
+  resume:OnClick();update()
+  assert(#ordered>count and ordered[#ordered]==41001)
+  dispatch(nil,'COMMODITY_SEARCH_RESULTS_UPDATED',41001)
+  assert(observedRows[1].pick and not observedRows[1].pick.inactive)
+  print('PASS: interrupted Invest search resumes the outstanding lookup and requires a fresh live result')
+end
+
+-- Exercise the production planner with indivisible offers that defeat both
+-- pure ROI ordering and the best single offer at three different budgets.
+do
+  local function up(fn,key)
+    for i=1,100 do local k,v=debug.getupvalue(fn,i);if k==key then return v,i end;if not k then break end end
+    error('missing capture '..key)
+  end
+  local render=up(panel.OnShow,'render')
+  local plan=up(render,'plan')
+  local _,idx=up(plan,'verified')
+  local _,modeIdx=up(plan,'investScan');debug.setupvalue(plan,modeIdx,false)
+  GetMoney=function()return 10000000 end
+  saved.held={};saved.itemOrders={};saved.pending=nil
+  ForeverMarketRisk={cutBP=0,lostDepositPerUnit=0};ForeverMarketDB.buyTargetBP=500
+  ForeverMarketTools=nil
+  for _,budget in ipairs({10000,30000,100000}) do
+    saved.cash=budget
+    local deals={}
+    for i,terms in ipairs({{.61,.40},{.5,.30},{.5,.30}}) do
+      local cost,profit=math.floor(budget*terms[1]),math.floor(budget*terms[2])
+      deals[i]={id=i+50000,itemID=i+50000,low=cost,exit=cost+profit,dep=0,auctionID=i,
+        edge=profit,qty=1,stack=1,vendor=0,at=GetTime()}
+    end
+    debug.setupvalue(plan,idx,deals)
+    local picks=plan();assert(#picks==2 and picks[1].v.id~=50001 and picks[2].v.id~=50001)
+    local gain=0;for _,p in ipairs(picks) do gain=gain+(p.v.exit-p.v.low)*p.n end
+    assert(gain==budget*.6)
+  end
+  print('PASS: 1g, 3g and 10g baskets earn 60% projected against 40% previous greedy/single baseline')
+end

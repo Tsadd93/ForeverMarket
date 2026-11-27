@@ -4,6 +4,17 @@ function ForeverMarketSetVenue(isNeutral) neutral=isNeutral==true end
 local clientRealm=GetRealmName
 function ForeverMarketVenueRealm()
   local realm=clientRealm() or ''
+  local guid=UnitGUID and UnitGUID('player')
+  local id=GetRealmID and GetRealmID()
+  if not id or id<=0 then id=guid and guid:match('^Player%-(%d+)%-') end
+  if id and ForeverMarketDB then
+    local byID=ForeverMarketDB.realmNames or {};ForeverMarketDB.realmNames=byID
+    local key=tostring(GetCurrentRegion())..'|'..id
+    if not byID[key] then byID[key]=realm~='' and realm or ('Realm '..id) end
+    realm=byID[key]
+  elseif realm=='' then
+    realm=id and ('Realm '..id) or ('Unresolved '..(guid or 'session'))
+  end
   return neutral and (realm..' [Neutral AH]') or realm
 end
 local GetRealmName=ForeverMarketVenueRealm
@@ -14,9 +25,50 @@ end
 function ForeverMarketHistory()
   ForeverMarketDB=ForeverMarketDB or {}
   local all=ForeverMarketDB.history or {};ForeverMarketDB.history=all
-  local key=scope(GetRealmName(),UnitFactionGroup('player'),GetCurrentRegion())
+  local realm=GetRealmName()
+  local key=scope(realm,UnitFactionGroup('player'),GetCurrentRegion())
+  local id=realm:match('^Realm (%d+)')
+  local suffix=neutral and ' [Neutral AH]' or ''
+  local faction=UnitFactionGroup('player')
+  local old=scope(suffix,faction,GetCurrentRegion())
+  if id and all[old] and not all[key] then
+    local known=false
+    local consistent=true
+    for _,group in ipairs({ForeverMarketDB.characters or {},ForeverMarketDB.__funds or {}}) do
+      for guid in pairs(group) do
+        known=true
+        if tostring(guid):match('^Player%-(%d+)%-')~=id then consistent=false end
+      end
+    end
+    if known and consistent then
+      all[key],all[old]=all[old],nil
+      ForeverMarketDB.realmAliases=ForeverMarketDB.realmAliases or {};ForeverMarketDB.realmAliases[old]=realm
+      local oldLive,newLive=suffix..'|'..faction,realm..'|'..faction
+      local numeric=GetRealmID and GetRealmID() or 0
+      local prefix=tostring(GetCurrentRegion())..'|'..numeric..'|'
+      local pins=ForeverMarketDB.sellPins
+      if pins and pins[prefix..oldLive] and not pins[prefix..newLive] then pins[prefix..newLive],pins[prefix..oldLive]=pins[prefix..oldLive],nil end
+      for _,a in pairs(ForeverMarketDB.characters or {}) do
+        if a.stockScope==scope(tostring(numeric),faction,GetCurrentRegion()) then a.stockScope=scope(id,faction,GetCurrentRegion()) end
+      end
+      for _,map in ipairs({ForeverMarketDB,ForeverMarketDB.__depth or {},ForeverMarketDB.sellQuotes or {}}) do
+        if map[oldLive] and not map[newLive] then map[newLive],map[oldLive]=map[oldLive],nil end
+      end
+    end
+  end
   all[key]=all[key] or {}
   return all[key]
+end
+function ForeverMarketEventRealm(e)
+  local aliases=ForeverMarketDB and ForeverMarketDB.realmAliases
+  return aliases and aliases[scope(e.realm or '',e.faction or '',e.region or 0)] or e.realm
+end
+-- Preserve the dashboard market explicitly linked to the recovered blank realm.
+function ForeverMarketDesktopRealm(realm,region,faction)
+  local r=ForeverMarketResearch
+  local aliases=ForeverMarketDB and ForeverMarketDB.realmAliases
+  if r and r.allowBlank and r.region==region and r.faction==faction and aliases and aliases[scope('',faction,region)]==realm then return r.realm end
+  return realm
 end
 local commodityByID={}
 local function commodity(key)
@@ -60,6 +112,14 @@ function ForeverMarketRepairHistory()
         dst.stamp[day]=dst.stamp[day] or src.stamp[day]
       end
       if (src.day or 0)>(dst.day or 0) then dst.day=src.day;dst.m=src.m end
+      for _,field in ipairs({'floors','bulkHigh'}) do
+        if src[field] then
+          dst[field]=dst[field] or {}
+          for day,v in pairs(src[field]) do
+            dst[field][day]=(field=='floors' and math.min or math.max)(dst[field][day] or v,v)
+          end
+        end
+      end
       if src.bulk and (not dst.bulk or src.bulk.at>dst.bulk.at) then dst.bulk=src.bulk end
     end
     if live[key] and (not live[id] or live[key].at>live[id].at) then live[id]=live[key] end
@@ -71,7 +131,7 @@ end
 -- Freeze a displayed investment's exit for three days. Only later full bulk
 -- observations can resolve it. Missing coverage stays separate from misses.
 local function closePaperWindow(p,now)
-  if p.at and now>p.at+3*86400 then
+  if p.at and math.floor(now/86400)>math.floor(p.at/86400)+3 then
     if not p.hit then
       if p.d1 and p.d2 and p.d3 then p.misses=p.misses+1 else p.gaps=p.gaps+1 end
     end
@@ -105,7 +165,7 @@ function ForeverMarketObserve(key,price,quantity,bulk)
   local now=time();local day=math.floor(now/86400)
   if r.day~=day then
     for old in pairs(r.h) do
-      if old<day-60 then if r.floors then r.floors[old]=nil end;r.h[old]=nil;r.l[old]=nil;r.a[old]=nil;r.stamp[old]=nil end
+      if old<day-60 then if r.floors then r.floors[old]=nil end;if r.bulkHigh then r.bulkHigh[old]=nil end;r.h[old]=nil;r.l[old]=nil;r.a[old]=nil;r.stamp[old]=nil end
     end
   end
   r.day=day;r.m=price
@@ -117,12 +177,12 @@ function ForeverMarketObserve(key,price,quantity,bulk)
   if ForeverMarketTools and ForeverMarketTools.checkAlert then ForeverMarketTools.checkAlert(key,price) end
   local trial=r.paper
   if trial then closePaperWindow(trial,now) end
-  if bulk and trial and trial.at and not trial.hit and now>trial.at and now<=trial.at+3*86400 then
-    local window=math.ceil((now-trial.at)/86400)
+  local window=trial and trial.at and day-math.floor(trial.at/86400)
+  if bulk and window and window>=1 and window<=3 and not trial.hit then
     trial['d'..window]=true
     if bulk>=trial.exit then trial.hit=true;trial.hits=trial.hits+1 end
   end
-  if bulk then r.bulk={price=bulk,at=now};r.floors=r.floors or {};r.floors[day]=math.min(bulk,r.floors[day] or bulk) end
+  if bulk then r.bulkHigh=r.bulkHigh or {};r.bulkHigh[day]=math.max(bulk,r.bulkHigh[day] or bulk);r.bulk={price=bulk,at=now};r.floors=r.floors or {};r.floors[day]=math.min(bulk,r.floors[day] or bulk) end
 end
 
 -- Read the JSON written by earlier versions without executing saved data.
@@ -210,7 +270,7 @@ function ForeverMarketTab(id,panel,text,title)
 end
 
 -- Use only observed daily bulk prices. Today's quote is checked separately.
-function ForeverMarketRecovery(floors,today)
+function ForeverMarketRecovery(floors,today,highs)
   if not floors then return end
   local days={}
   for day,p in pairs(floors) do
@@ -230,10 +290,16 @@ function ForeverMarketRecovery(floors,today)
     if day>=nextDay and day+3<today and days[i-5]>=day-8 then
       local baseline=median(i-1,5)
       if floors[day]<=baseline*.85 then
-        trials=trials+1;nextDay=day+4
+        nextDay=day+4
+        local exit=math.floor(baseline*.95)-2
+        local complete,hit=true,false
         for future=day+1,day+3 do
-          if floors[future] and floors[future]>=baseline*.95 then wins=wins+1;break end
+          local high=highs and highs[future]
+          if not high then complete=false end
+          if (high or floors[future] or 0)>=exit then hit=true end
         end
+        if hit or complete then trials=trials+1 end
+        if hit then wins=wins+1 end
       end
     end
   end
@@ -249,13 +315,13 @@ function ForeverMarketSeedFloors()
   if not source then return end
   local realm,faction,region=GetRealmName(),UnitFactionGroup('player'),GetCurrentRegion()
   local key=scope(realm,faction,region)
-  local seeded=ForeverMarketDB.floorMigration or {};ForeverMarketDB.floorMigration=seeded
+  local seeded=ForeverMarketDB.bulkHighMigration or {};ForeverMarketDB.bulkHighMigration=seeded
   if seeded[key] then return end
   local db=ForeverMarketHistory();local oldest=math.floor(time()/86400)-60
   for _,e in ipairs(source.events or {}) do
-    if e.kind=='price_depth' and e.realm==realm and e.faction==faction and e.region==region and e.floorPrice and e.floorPrice>0 and e.itemId then
+    if e.kind=='price_depth' and ForeverMarketEventRealm(e)==realm and e.faction==faction and e.region==region and e.floorPrice and e.floorPrice>0 and e.itemId then
       local r=db[tostring(e.itemId)];local day=math.floor(e.at/86400)
-      if r and day>=oldest then r.floors=r.floors or {};r.floors[day]=math.min(r.floors[day] or e.floorPrice,e.floorPrice) end
+      if r and day>=oldest then r.bulkHigh=r.bulkHigh or {};r.bulkHigh[day]=math.max(r.bulkHigh[day] or 0,e.floorPrice);r.floors=r.floors or {};r.floors[day]=math.min(r.floors[day] or e.floorPrice,e.floorPrice) end
     end
   end
   seeded[key]=true

@@ -90,14 +90,17 @@ function M.marketOutcomes(name)
   end
   for i=turnover.index+1,#events do
     local e=events[i]
-    if e.name and e.at and e.at>=now-14*86400 and (e.realm or '')..'|'..(e.faction or '')==scope then
+    if e.name and e.at and e.at>=now-14*86400 and (not e.region or e.region==GetCurrentRegion()) and (ForeverMarketEventRealm and ForeverMarketEventRealm(e) or e.realm or '')..'|'..(e.faction or '')==scope then
       local id=e.auctionId
       local post=id and turnover.posts[id]
       local key=post and post.name or e.name
-      if e.kind=='posted' or e.kind=='sale_notice' and id or e.kind=='auction_expired' then
+      if e.kind=='posted' or e.kind=='sale_notice' and id or e.kind=='auction_expired' or e.kind=='proceeds_collected' and e.invoiceType=='seller' then
         local r=turnover.byName[key] or {sales=0,returns=0,mature=0,linked=0,hours=0}
         turnover.byName[key]=r
-        if e.kind=='posted' and id and not post then
+        if e.kind=='proceeds_collected' and e.amount and e.deposit and e.fee and (e.quantity or 0)>0 and e.character==UnitName('player') then
+          r.paidUnits=(r.paidUnits or 0)+e.quantity;r.receipts=(r.receipts or 0)+1
+          r.gross=(r.gross or 0)+e.amount+e.fee-e.deposit;r.lastPaid=e.at
+        elseif e.kind=='posted' and id and not post then
           local mature=now-e.at>=12*3600
           turnover.posts[id]={name=key,at=e.at,mature=mature}
           if mature then r.mature=r.mature+1 end
@@ -234,7 +237,19 @@ function M.expiryWarning(name)
 end
 function M.valueLines(tip,id,link)
   local name=C_Item.GetItemNameByID(id)
-  if name then tip:AddLine(M.saleLabel(name),.75,.8,.85) end
+  if name then
+    tip:AddLine(M.saleLabel(name),.75,.8,.85)
+    local evidence=M.marketOutcomes(name)
+    if evidence and evidence.paidUnits then
+      tip:AddDoubleLine('Your sale price / unit',ForeverMarketCoins(math.floor(evidence.gross/evidence.paidUnits)))
+      tip:AddLine(('%d paid invoices / %d units / latest %s (item name)'):format(evidence.receipts,evidence.paidUnits,date('%b %d',evidence.lastPaid)),.75,.8,.85)
+    end
+  end
+  local byItem=M.account().styleStats and M.account().styleStats[id]
+  for _,style in ipairs({'Match','Undercut'}) do
+    local stat=byItem and byItem[style]
+    if stat then tip:AddLine(('%s: %d/%d posts saw a sale%s'):format(style,stat.sold,stat.posts,stat.sold>0 and (' / mean '..math.floor(stat.seconds/stat.sold/60)..' min') or '')) end
+  end
   local best,recipe
   for _,r in pairs(M.account().recipes) do
     if (r.materials[id] or r.choices) then
@@ -411,7 +426,7 @@ local function entries()
       for i=#events,1,-1 do
         local e=events[i]
         local sale=e.auctionId and M.account().sales[e.auctionId]
-        if e.character==UnitName('player') and e.realm==ForeverMarketVenueRealm() and e.faction==UnitFactionGroup('player') and
+        if e.character==UnitName('player') and (ForeverMarketEventRealm and ForeverMarketEventRealm(e) or e.realm)==ForeverMarketVenueRealm() and e.faction==UnitFactionGroup('player') and
            (e.name==ledgerItem or sale and sale.name==ledgerItem) then
           ledgerEvents[#ledgerEvents+1]={name=date('%b %d %H:%M',e.at)..'  '..e.kind:gsub('_',' '),
             detail=(e.quantity and 'x '..e.quantity..'   ' or '')..(e.amount and money(e.amount) or e.total and money(e.total) or '')..(e.deposit and '   deposit '..money(e.deposit) or ''),key=i}

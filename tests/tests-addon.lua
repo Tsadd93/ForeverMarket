@@ -39,3 +39,19 @@ local h=ForeverMarketHistory()['123'];local day=math.floor(clock/86400)
 assert(h.m==620 and h.l[day]==620 and h.h[day]==700 and h.a[day]==8)
 assert(ForeverMarketHistory()['g:987:15'].m==1700)
 printed('PASS: commodity history consolidation, daily range, latest quote, equipment separation and repeat migration')
+
+do
+  GetRealmName=function()return ''end;GetRealmID=function()return 0 end
+  UnitGUID=function()return 'Player-6926-test' end;UnitFactionGroup=function()return 'Horde' end;GetCurrentRegion=function()return 1 end
+  dofile('src/History.lua')
+  local old={['42']={h={[1]=5}}}
+  ForeverMarketDB={characters={['Player-6926-test']={}},history={['1||Horde']=old}}
+  assert(ForeverMarketHistory()==old and ForeverMarketDB.history['1|Realm 6926|Horde']==old)
+  assert(ForeverMarketEventRealm({realm='',faction='Horde',region=1})=='Realm 6926')
+  ForeverMarketDB={characters={['Player-6926-test']={},['Player-8888-alt']={}},history={['1||Horde']=old}}
+  assert(ForeverMarketHistory()~=old and ForeverMarketDB.history['1||Horde']==old)
+  local low,high={},{};for i=60,99 do low[i]=100;high[i]=100 end
+  for _,i in ipairs({66,77,88}) do low[i]=70;for j=i+1,i+3 do low[j]=75;high[j]=95 end end
+  local m=assert(ForeverMarketRecovery(low,100,high));assert(m.wins>=3)
+  print('PASS: realm 0 GUID fallback, isolated mixed history, intraday recoveries on subsequent market days')
+end

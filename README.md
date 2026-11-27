@@ -30,6 +30,16 @@ Market Buy weighs recent sales, time to sale, expirations and older unresolved l
 
 **Ledger → Investment tests** shows whether later bulk quotes reached a displayed investment's original exit within three days. It counts hits, observed misses and incomplete windows separately. Actual proceeds appear under **Fund flips** when you collect the mail.
 
+### Planning a session
+
+Use **Report** in Market Buy (or `/fm scanstatus`) for progress, first-deal time, rejection counts and up to three near misses. **Resume** continues an interrupted scan in the same session and venue. **Start** runs a new pass, including items screened out at an earlier budget. Verified offers compete for the fund as individual purchases and as several alternative baskets.
+
+Click a Buy or Sell item name for a persistent item tooltip. Where available, it shows the observed ask, source and age, net proceeds, vendor price, and the current character's quantity-weighted sale price from paid invoices over the past 14 days. Receipts identify items by name. **Market Sell → Price** switches the default between matching bulk and undercutting. Item margin rules can already specify matching. Posting comparisons count sale notifications and report time to the first notification. These are observations of your own listings.
+
+**Craft → Restock** targets three days of stock from the last seven days of collected unit sales. It accounts for bags, auctions, queued output, reagent depth and available funds. Review the suggested quantity and click **Add** to queue it. Recipe tooltips compare buying the finished output, crafting it, and selling the materials. When sales history is empty, use the manual Recipes tab.
+
+Invest compares subsequent bulk quotes against the frozen exit on the next three UTC market days. Incomplete windows without an observed recovery are tracked separately in forward tests. Beta clients with a blank realm name use a realm identifier. A legacy blank history is recovered automatically when saved character identities agree on the current realm.
+
 ## Optional Windows dashboard
 
 [Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.

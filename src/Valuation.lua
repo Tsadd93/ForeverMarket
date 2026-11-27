@@ -28,7 +28,7 @@ function M.restoreCollected()
   local before,last
   for _,e in ipairs(source.events) do
     if e.character==name and e.region==GetCurrentRegion() and e.faction==UnitFactionGroup('player')
-      and (e.realm==GetRealmName() or e.realm==GetRealmName()..' [Neutral AH]') then
+      and ((ForeverMarketEventRealm and ForeverMarketEventRealm(e) or e.realm)==GetRealmName() or (ForeverMarketEventRealm and ForeverMarketEventRealm(e) or e.realm)==GetRealmName()..' [Neutral AH]') then
       local day=date('%Y-%m-%d',e.at)
       if e.kind=='sale_notice' and e.auctionId and a.notice[e.auctionId] then a.notice[e.auctionId].at=e.at end
       if not last or e.at-last>10 or e.kind=='session' then queue={};before=nil;confirmed={} end
@@ -80,8 +80,8 @@ function M.quotes()
   return all[M.scope()]
 end
 function M.prices(id,key,variant)
-  local q=M.quotes()[variant or id]
   local hist=ForeverMarketHistory()[key or tostring(id)]
+  local q=M.quotes()[variant or id]
   local depths=ForeverMarketDB.__depth
   local d=not variant and depths and depths[M.scope()] and depths[M.scope()][id]
   if d and (not q or d.at>q.at) then q={price=d.floorPrice,at=d.at} end
@@ -92,10 +92,11 @@ function M.prices(id,key,variant)
   end
   if hist and hist.bulk and not variant and (not q or hist.bulk.at>q.at) then q=hist.bulk end
   if q and q.price and time()>=q.at and time()-q.at<=86400 then
-    return ForeverMarketPostPrice(q.price),q.at,time()-q.at<60 and 'Live check' or 'Last scan'
+    local match=ForeverMarketDB.matchBulk or M.rule and M.rule(id)=='Margin'
+    return match and q.price or ForeverMarketPostPrice(q.price),q.at,(variant and 'Exact variant / ' or '')..(time()-q.at<60 and 'Live check' or 'Last scan'),q.price
   end
   local avg,at=M.history(key or tostring(id))
-  return avg,at,'Historical estimate'
+  return avg,at,variant and 'Base item / historical estimate' or 'Historical estimate'
 end
 function M.bagCount(id)
   local count=C_Item and C_Item.GetItemCount or GetItemCount
@@ -109,7 +110,7 @@ function M.levels(levels)
   for i=1,math.min(32,#prices) do out[i]={prices[i],levels[prices[i]]} end
   return out
 end
-function M.cost(id,n)
+function M.cost(id,n,tiers)
   if n<=0 then return 0 end
   local depth=ForeverMarketDB.__depth
   local book=depth and depth[M.scope()] and depth[M.scope()][id]
@@ -123,6 +124,7 @@ function M.cost(id,n)
     for _,tier in ipairs(levels) do
       if tier[1] and tier[2] then
         local take=math.min(n,tier[2]);total=total+tier[1]*take;n=n-take
+        if tiers and take>0 then tiers[#tiers+1]=take..' x '..ForeverMarketCoins(tier[1]) end
         if n==0 then return total end
       end
     end
@@ -186,8 +188,18 @@ function M.onActivity(kind,e)
   local a=M.account()
   if M.recordMarket then M.recordMarket(kind,e) end
   if kind=='posted' and e.auctionId then a.sales[e.auctionId]={name=e.name,id=e.itemId,qty=e.quantity,amount=e.total,at=e.at,deposit=e.deposit}
+    local intent=M.sellIntent
+    if intent and e.quantity==intent.n and e.itemId==intent.id and e.total==intent.price*intent.n and e.at and e.at-intent.at<=60 then
+      local styles=a.styleStats or {};a.styleStats=styles
+      local byItem=styles[e.itemId] or {};styles[e.itemId]=byItem
+      local stat=byItem[intent.style] or {posts=0,sold=0,seconds=0};byItem[intent.style]=stat
+      stat.posts=stat.posts+1;a.sales[e.auctionId].style=intent.style;M.sellIntent=nil
+    end
   elseif kind=='sale_notice' and e.auctionId then
     local s=a.sales[e.auctionId]
+    if s and s.style and not s.soldAt and e.at then
+      local stat=a.styleStats[s.id][s.style];stat.sold=stat.sold+1;stat.seconds=stat.seconds+math.max(0,e.at-s.at)
+    end
     if s then s.soldAt=e.at end
     a.notice[e.auctionId]={name=s and s.name,text=e.name,at=e.at}
   elseif kind=='proceeds_collected' and e.invoiceType=='seller' then

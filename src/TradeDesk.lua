@@ -26,7 +26,9 @@ function M.goldInput(s)
   return n<=1e10 and n or nil
 end
 local function inventoryScope()
-  return table.concat({GetCurrentRegion(),GetRealmID and GetRealmID() or GetRealmName() or '',UnitFactionGroup('player')},'|')
+  local id=GetRealmID and GetRealmID()
+  if not id or id<=0 then id=(UnitGUID('player') or ''):match('^Player%-(%d+)%-') or GetRealmName() end
+  return table.concat({GetCurrentRegion(),id,UnitFactionGroup('player')},'|')
 end
 local function saveStock(where,items)
   local a=M.account()
@@ -261,7 +263,13 @@ function M.openDesk()
         status:SetText(ok and 'Checking live offer. Review the total, then confirm.' or why);showResults()
       end)
       local hit=CreateFrame('Frame',nil,panel);hit:SetPoint('TOPLEFT',10,y+4);hit:SetSize(395,23);hit:EnableMouse(true)
-      hit:SetScript('OnEnter',function(self)if r.data then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink('item:'..r.data.id);M.explain(GameTooltip,r.data.id);GameTooltip:Show() end end)
+      hit:SetScript('OnEnter',function(self)if r.data then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink('item:'..r.data.id);M.explain(GameTooltip,r.data.id)
+        local n=tonumber(fields.qty:GetText())
+        if n and n>=1 and n==math.floor(n) then
+          local tiers={};local cost=M.cost(r.data.id,n,tiers)
+          if cost then GameTooltip:AddLine('Observed purchase tiers: '..table.concat(tiers,' + '),1,.85,.35,true) end
+        end
+        GameTooltip:Show() end end)
       hit:SetScript('OnLeave',function()GameTooltip:Hide()end);rows[i]=r
     end
     status=label(panel,12,-84,635);pager=label(panel,92,-323,72)

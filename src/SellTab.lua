@@ -127,6 +127,7 @@ local function historicalQuote(s, timedOut)
 end
 local function price(q,s)
   if q.floorPrice then
+    if ForeverMarketDB and ForeverMarketDB.matchBulk then return q.floorPrice end
     if s and ForeverMarketTools and ForeverMarketTools.rule and ForeverMarketTools.rule(s.k.itemID)=='Margin' then return q.floorPrice end
     return ForeverMarketPostPrice(q.floorPrice)
   end
@@ -259,7 +260,7 @@ local function paint()
       local warning,loss=ForeverMarketTools.expiryWarning(C_Item.GetItemNameByID(s.k.itemID))
       if warning then
         row.name:SetText('|cffffb347!|r '..ForeverMarketRowIcon(s.k.itemID,s.link))
-        row.priceReason=(row.priceReason or '')..' / '..warning..' / '..loss..' / Review stack size and relist cost before posting again.'
+        row.priceReason=(row.priceReason or '')..' / '..warning..' / '..loss..' / next deposit '..ForeverMarketCoins(s.deposit or 0)..' / vendor stack '..ForeverMarketCoins((select(11,C_Item.GetItemInfo(s.link)) or 0)*(quantity(s) or s.count))
       end
     end
     row.post:SetShown(s~=nil)
@@ -282,6 +283,9 @@ local function post(row)
   local p=price(q,s)
   local limit,canOverride=postingLimit(s,p,true)
   if limit and not (allowHeld and row.override and canOverride and q.floorPrice) then bags();paint();caption:SetText(limit);return end
+  if ForeverMarketTools and q.floorPrice then
+    ForeverMarketTools.sellIntent={id=s.k.itemID,n=qty,price=p,at=time(),style=p==q.floorPrice and 'Match' or 'Undercut'}
+  end
   if nativeFallback then
     local ah=AuctionHouseFrame
     local form=s.commodity and ah.CommoditiesSellFrame or ah.ItemSellFrame
@@ -486,7 +490,11 @@ local lastScope
 local function create()
   if panel or not AuctionHouseFrame then return end
   panel=CreateFrame('Frame',nil,AuctionHouseFrame);panel:SetPoint('TOPLEFT',14,-62);panel:SetPoint('BOTTOMRIGHT',-12,38);panel:Hide()
-  caption=label(panel,12,-8,192);caption:SetText('Edit Qty or post the next ready stack.')
+  caption=label(panel,12,-32,660);caption:SetText('Edit Qty or post the next ready stack.')
+  button(panel,'Price: '..(ForeverMarketDB.matchBulk and 'Match bulk' or 'Undercut'),8,-6,190,function(self)
+    ForeverMarketDB.matchBulk=not ForeverMarketDB.matchBulk
+    self:SetText('Price: '..(ForeverMarketDB.matchBulk and 'Match bulk' or 'Undercut'));paint()
+  end)
   local override=button(panel,'Post held: off',437,-6,151,function(self)
     allowHeld=not allowHeld;self:SetText(allowHeld and 'Post held: on' or 'Post held: off');paint()
   end)
@@ -512,9 +520,9 @@ local function create()
     bags();paint()
   end)
   button(panel,'Refresh',600,-6,75,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
-  ForeverMarketResults(panel,38,{{'Name',0},{'Qty',237},{'Bulk ask × supply',292},{'Stack total',467},{'Action',592}})
+  ForeverMarketResults(panel,56,{{'Name',0},{'Qty',237},{'Bulk ask × supply',292},{'Stack total',467},{'Action',592}})
   scroll=CreateFrame('ScrollFrame','ForeverMarketSellScroll',panel,'UIPanelScrollFrameTemplate')
-  scroll:SetPoint('TOPLEFT',0,-64)
+  scroll:SetPoint('TOPLEFT',0,-82)
   scroll:SetPoint('BOTTOMRIGHT',-30,8)
   content=CreateFrame('Frame',nil,scroll)
   content:SetSize(670,1)

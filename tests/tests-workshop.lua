@@ -421,11 +421,40 @@ do
   local paper=ForeverMarketHistory()[key].paper
   assert(paper.exit==80 and paper.hits==0)
   clock=clock+1;ForeverMarketObserve(key,70,20,70);assert(paper.hits==0)
-  clock=clock+1;ForeverMarketObserve(key,90,2,90);ForeverMarketObserve(key,95,2,95);assert(paper.hits==1)
+  clock=clock+1;ForeverMarketObserve(key,90,2,90);assert(paper.hits==0)
+  clock=clock+86400;ForeverMarketObserve(key,95,2,95);assert(paper.hits==1)
   clock=clock+4*86400;ForeverMarketPaperDip(98765,100)
   clock=clock+4*86400;ForeverMarketPaperResults();assert(paper.gaps==1 and not paper.at)
   ForeverMarketPaperDip(98765,100)
   for i=1,3 do clock=clock+86400;ForeverMarketObserve(key,70,2,70) end
-  clock=clock+1;ForeverMarketPaperResults();assert(paper.misses==1 and paper.hits==1 and paper.gaps==1)
+  clock=clock+86400;ForeverMarketPaperResults();assert(paper.misses==1 and paper.hits==1 and paper.gaps==1)
   print('PASS: forward dip tests freeze targets and distinguish later hits, observed misses and missing days')
+end
+
+do
+  local recipe={key='demandtest',name='Demand widget',output=809,yield=1,materials={[810]=2}}
+  names[809]='Demand widget'
+  M.account().recipes.demandtest=recipe
+  M.saleCount=function()return 14,4 end
+  depth(810,10,100);depth(809,100,100)
+  M.account().useTransfers=false;M.account().build={};M.account().manager.lists={Default={}};M.account().manager.active='Default'
+  bags[809]=1;bags[810]=0
+  local ctx={stock={[809]=1},queued={[809]=1},needs={},budget=40}
+  assert(M.restockCraft(recipe,ctx)==2)
+  ctx.budget=19;assert(M.restockCraft(recipe,ctx)==0)
+  local actual=M.cost;M.cost=function(id,n)if id==809 then return n end return actual(id,n) end
+  ctx.budget=100;assert(M.restockCraft(recipe,ctx)==0);M.cost=actual
+  M.saleCount=function()return 0,0 end;assert(M.restockCraft(recipe,ctx)==0)
+  print('PASS: profession restock accounts for demand, bags, listed and queued output, cash and cheaper finished goods')
+end
+do
+  local e={itemId=809,quantity=2,total=200,auctionId=8981,at=time(),name='Demand widget'}
+  M.sellIntent={id=809,n=2,price=100,style='Match',at=time()}
+  M.onActivity('posted',e)
+  M.onActivity('sale_notice',{auctionId=8981,at=time()+10})
+  M.onActivity('sale_notice',{auctionId=8981,at=time()+15})
+  local s=M.account().styleStats[809].Match;assert(s.posts==1 and s.sold==1 and s.seconds==10)
+  ForeverMarketActivity={events={{name=e.name,kind='proceeds_collected',region=1,realm=GetRealmName(),faction='Horde',character=UnitName('player'),at=time(),quantity=2,invoiceType='seller',amount=194,deposit=4,fee=10}}}
+  local evidence=M.marketOutcomes(e.name);assert(evidence.gross==200 and evidence.paidUnits==2 and evidence.receipts==1)
+  print('PASS: posting style evidence and paid unit price from gross invoice, excluding returned deposit')
 end

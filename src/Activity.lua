@@ -9,10 +9,16 @@ local ah,mail,attached=false,false,false
 local cells,strip={},nil
 local cursor,elapsed,wake=0,0,0
 -- Older dashboard releases do not accept expired-mail events.
+local function desktopEvent(e)
+  local realm=ForeverMarketDesktopRealm and ForeverMarketDesktopRealm(e.realm,e.region,e.faction)
+  if not realm or realm==e.realm then return e end
+  local copy={};for k,v in pairs(e) do copy[k]=v end
+  copy.realm=realm;return copy
+end
 function ForeverMarketDesktopEvents()
   local exported={}
   for _,e in ipairs(ForeverMarketActivity and ForeverMarketActivity.events or {}) do
-    if e.kind~='auction_expired' then exported[#exported+1]=e end
+    if e.kind~='auction_expired' then exported[#exported+1]=desktopEvent(e) end
   end
   return exported
 end
@@ -237,7 +243,7 @@ local function attach()
   end) end
 end
 local function draw(e)
-  local payload=ForeverMarketJSON(e)
+  local payload=ForeverMarketJSON(desktopEvent(e))
   if #payload>760 then return end
   if not strip then
     strip=CreateFrame('Frame',nil,UIParent)

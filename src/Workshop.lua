@@ -24,6 +24,7 @@ end
 local function render()
   if not panel or not panel:IsVisible() then return end
   local a=M.account();list={}
+  local restock=mode=='Restock' and M.restockContext()
   if mode=='Materials' then
     for id,n in pairs(M.materials()) do
       local need=M.missing(id,n)
@@ -35,8 +36,11 @@ local function render()
     for key,r in pairs(a.recipes) do
       if mode~='Build list' or a.build[key] then
         local batches=mode=='Build list' and a.build[key] or n
-        local e,why=M.estimate(r,batches)
-        list[#list+1]={key=key,name=r.name,info=e and money(e.cash) or why,
+        local explanation
+        if restock then batches,explanation=M.restockCraft(r,restock) end
+        local e,why
+        if batches>0 then e,why=M.estimate(r,batches) end
+        list[#list+1]={key=key,name=r.name,info=explanation or (e and money(e.cash) or why),
           value=e and money(e.profit) or '',score=e and e.profit*(M.salesWeight and M.salesWeight(r.name) or 1) or -math.huge,estimate=e,n=batches}
       end
     end
@@ -46,13 +50,13 @@ local function render()
   panel.page:SetText(page..' / '..math.max(1,math.ceil(#list/#rows)))
   for i,row in ipairs(rows) do
     local d=list[(page-1)*#rows+i];row.data=d;row.action:SetShown(d~=nil)
-    row.name:SetText(d and ((mode=='Build list' and d.n..' x ' or '')..d.name) or '')
+    row.name:SetText(d and (((mode=='Build list' or mode=='Restock') and d.n..' x ' or '')..d.name) or '')
     row.info:SetText(d and d.info or '');row.value:SetText(d and d.value or '')
     if d then
       local q=M.quote
       local active=q and q.id==d.id
       row.action:SetText(mode=='Materials' and (active and (q.total and 'Confirm' or 'Quoting') or 'Get quote') or mode=='Build list' and 'Remove' or 'Add')
-      row.action:SetEnabled(mode=='Build list' or mode=='Recipes' and d.estimate and d.estimate.extra>0 and d.estimate.profit>0 or mode=='Materials' and d.score>0 and (not active or q.total~=nil) or false)
+      row.action:SetEnabled(mode=='Build list' or (mode=='Recipes' or mode=='Restock') and d.estimate and d.estimate.extra>0 and d.estimate.profit>0 or mode=='Materials' and d.score>0 and (not active or q.total~=nil) or false)
     end
   end
   return #list
@@ -87,6 +91,7 @@ local function create()
     notice:SetText(a.useTransfers and 'Shopping accounts for recently observed transferable stock. Collect it before crafting.' or 'Shop using current bag quantities.')
   end):SetText(M.account().useTransfers and 'Use bag stock only' or 'Use stored stock')
   button(panel,424,0,55,'Manage',function() if M.openManager then M.openManager() end end)
+  button(panel,487,0,105,'Restock',function()switch('Restock')end)
   notice=text(panel,4,-58,650)
   ForeverMarketResults(panel,80,{{'Recipe / material',0},{'Missing materials',202},{'Profit / cost',447},{'Action',566}})
   for i=1,9 do
@@ -94,8 +99,12 @@ local function create()
     local row={name=text(panel,6,y,192),info=text(panel,206,y,236),value=text(panel,451,y,109)}
     row.action=button(panel,568,y+4,83,'Add',function()
       local d=row.data;if not d then return end
-      if mode=='Recipes' then
+      if mode=='Recipes' or mode=='Restock' then
         local n=quantity()
+        if mode=='Restock' then
+          n=M.restockCraft(M.account().recipes[d.key],M.restockContext())
+          if n~=d.n or n<=0 then render();notice:SetText('Stock or cost changed. Review the new quantity.');return end
+        end
         if not n then notice:SetText('Enter 1 to 999 crafts.');return end
         local total=(M.account().build[d.key] or 0)+n
         local e,why=M.estimate(M.account().recipes[d.key],total)
@@ -122,6 +131,7 @@ local function create()
           GameTooltip:AddDoubleLine('Post per unit',money(e.post))
           GameTooltip:AddDoubleLine('Minimum output',tostring(e.units))
           GameTooltip:AddDoubleLine('Buy every material',money(e.all))
+          GameTooltip:AddDoubleLine('Buy finished output',money(M.cost(r.output,e.units)))
           GameTooltip:AddDoubleLine('Cash needed now',money(e.cash))
           GameTooltip:AddDoubleLine('Net proceeds if sold',money(e.net))
           GameTooltip:AddDoubleLine('Gain over selling materials',money(e.extra))
@@ -168,9 +178,9 @@ local function readable(value)
 end
 local function itemValues(tip,id,link,n,bound,k,variant)
   local key=k and ForeverMarketHistoryKey(k)
-  local post,at,source=M.prices(id,key,variant)
+  local post,at,source,bulk=M.prices(id,key,variant)
   if not post and key and key~=tostring(id) then
-    post,at=M.prices(id);source='Base item estimate'
+    post,at,source,bulk=M.prices(id);source='Base item estimate'
   end
   local _,_,_,_,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(link or id)
   tip:AddDoubleLine('Forever Market',n and ('Each   /   Stack of '..n) or 'Per item',.4,1,.75,.85,.85,.85)
@@ -178,6 +188,7 @@ local function itemValues(tip,id,link,n,bound,k,variant)
     tip:AddDoubleLine(label,money(each)..(n and ('   /   '..money(each*n)) or ''),1,1,1,1,1,1)
   end
   if post and not bound then
+    if bulk then line('Observed bulk ask',bulk) end
     line(n and 'Post at' or 'AH estimate',post)
     tip:AddDoubleLine('After AH cut',money(ForeverMarketSaleNet(post))..(n and ('   /   '..money(ForeverMarketSaleNet(post*n))) or ''))
     tip:AddLine(source..'  |  '..math.floor((time()-at)/60)..' min ago',.7,.8,.8)

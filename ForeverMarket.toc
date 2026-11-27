@@ -2,7 +2,7 @@
 ## Title: Forever Market
 ## Notes: Auction scanning, bag valuations, resale opportunities and profession planning for WoW Forever.
 ## Author: Tsadd93
-## Version: 0.12.0
+## Version: 0.13.0
 ## SavedVariables: ForeverMarketExport, ForeverMarketDB, ForeverMarketActivity, ForeverMarketActivityExport
 
 Research.lua

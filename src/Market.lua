@@ -67,6 +67,12 @@ function ForeverMarketHover(parent,y,width,row)
   hit:SetScript('OnEnter',function(self)
     if row.itemRef then GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:SetHyperlink(row.itemRef);if row.marketId and ForeverMarketTools and ForeverMarketTools.explain then ForeverMarketTools.explain(GameTooltip,row.marketId,row.priceReason) elseif row.saleText then GameTooltip:AddLine(row.saleText) end;GameTooltip:Show() end
   end)
+  hit:SetScript('OnClick',function()
+    if row.itemRef and SetItemRef then
+      local link=row.itemRef:match('|H([^|]+)|h') or row.itemRef
+      SetItemRef(link,row.itemRef,'LeftButton')
+    end
+  end)
   hit:SetScript('OnLeave',function()GameTooltip:Hide()end)
   return hit
 end
@@ -140,7 +146,7 @@ local function export(quiet)
       end
     end
   end
-  ForeverMarketExport=json({version=1,realm=GetRealmName(),faction=UnitFactionGroup('player'),region=GetCurrentRegion(),exportedAt=time(),gold=GetMoney(),rows=rows,activity=ForeverMarketDesktopEvents and ForeverMarketDesktopEvents()})
+  ForeverMarketExport=json({version=1,realm=ForeverMarketDesktopRealm and ForeverMarketDesktopRealm(GetRealmName(),GetCurrentRegion(),UnitFactionGroup('player')) or GetRealmName(),faction=UnitFactionGroup('player'),region=GetCurrentRegion(),exportedAt=time(),gold=GetMoney(),rows=rows,activity=ForeverMarketDesktopEvents and ForeverMarketDesktopEvents()})
   if not quiet then print('|cff65dfc0Forever Market:|r Exported '..count..' items. Type /reload to save for the desktop app.') end
 end
 local f=CreateFrame('Frame')
@@ -162,7 +168,12 @@ SlashCmdList.FOREVERMARKET=function(msg)
     if not r then print('Forever Market: no Buy scan recorded yet.');return end
     print(('Forever Market: %s · %s · %ds · %g%% target'):format(r.source,r.state or 'starting',r.elapsed or 0,r.target/100))
     print(('%d eligible · %d screened · %d detail requests · %d checked · %d unanswered'):format(r.candidates or 0,r.screened or 0,r.detailRequests or 0,r.checked or 0,r.unanswered or 0))
+    print('Market: '..ForeverMarketVenueRealm()..' / '..UnitFactionGroup('player')..' / '..(r.firstBuy and ('first deal '..math.floor(r.firstBuy)..'s') or 'no verified deal recorded'))
+    print(('Short history %d / no supply %d / over budget %d / spread %d'):format(r.thinHistory or 0,r.noSupply or 0,r.overBudget or 0,r.weakSpread or 0))
+    for _,miss in ipairs(r.misses or {}) do print('Near miss: '..(C_Item.GetItemNameByID(math.abs(miss.id)) or tostring(miss.id))..' / '..miss.reason) end
     if r.snapshotStatus then print('Snapshot: '..r.snapshotStatus) end
+    if r.state=='closed' then print('Window closed before completion. Resume in Market Buy during this session.')
+    elseif r.state=='complete' and not r.firstBuy then print('Completed with no qualifying purchase. Unanswered checks are excluded.') end
     if r.item then print('Current item ID: '..r.item) end
   elseif (msg=='sync' or msg=='sync on' or msg=='sync off') and ForeverMarketLiveSync then
     local enabled

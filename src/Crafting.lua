@@ -160,6 +160,49 @@ function M.reserve()
   end
   reserve=cost;expires=GetTime()+1;return cost
 end
+function M.restockContext()
+  local ctx={stock={},queued={},needs=M.materials(),budget=ForeverMarketSpendable and ForeverMarketSpendable(true) or GetMoney()}
+  local api=C_AuctionHouse
+  for i=1,api.GetNumOwnedAuctions() do
+    local a=api.GetOwnedAuctionInfo(i)
+    if a and a.itemKey and a.status==0 then local id=a.itemKey.itemID;ctx.stock[id]=(ctx.stock[id] or 0)+(a.quantity or 1) end
+  end
+  local account=M.account()
+  for key,n in pairs(account.build) do
+    local r=account.recipes[key]
+    if r and r.output then ctx.queued[r.output]=(ctx.queued[r.output] or 0)+n*(r.yield or 1) end
+  end
+  for id,n in pairs(ctx.needs) do ctx.budget=ctx.budget-(M.cost(id,M.missing(id,n)) or math.huge) end
+  return ctx
+end
+function M.restockCraft(r,ctx)
+  if not r.output then return 0,'No auctionable output' end
+  local name=C_Item.GetItemNameByID(r.output)
+  local sales=M.saleCount and M.saleCount(name) or 0
+  local stock=M.bagCount(r.output)+(ctx.stock[r.output] or 0)+(ctx.queued[r.output] or 0)
+  local needed=math.max(0,math.ceil(sales*3/7)-stock)
+  local hi=math.min(999-(M.account().build[r.key] or 0),math.floor(needed/(r.yield or 1)))
+  local lo,reason=0,sales==0 and 'No paid sales in 7 days' or 'Stock covers three days'
+  while lo<hi do
+    local n=math.ceil((lo+hi)/2)
+    local e,why=M.estimate(r,n)
+    local ok=e and e.extra>0 and e.profit>0
+    if ok then
+      local cash=0
+      for id,per in pairs(M.inputs(r,n)) do
+        local existing=ctx.needs[id] or 0
+        local total=M.cost(id,M.missing(id,existing+n*per))
+        local reserved=M.cost(id,M.missing(id,existing))
+        cash=cash+(total and reserved and total-reserved or math.huge)
+      end
+      local finished=M.cost(r.output,e.units)
+      if cash>ctx.budget then ok=false;why='Budget or reagent supply'
+      elseif finished and finished<e.net-e.extra then ok=false;why='Cheaper to buy finished' end
+    end
+    if ok then lo=n else hi=n-1;reason=why or 'Materials pay better' end
+  end
+  return lo,lo>0 and (sales..' sold / 7d; '..stock..' stocked or queued') or reason
+end
 function M.queue(key,n)
   if n~=math.floor(n) or n<0 or n>999 then return false end
   local a=M.account()
