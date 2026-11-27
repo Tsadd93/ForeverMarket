@@ -266,6 +266,7 @@ function ForeverMarketTab(id,panel,text,title)
     for _,t in ipairs(ah.Tabs) do PanelTemplates_DeselectTab(t) end
     PanelTemplates_SelectTab(b);ah:SetTitle(title);panel:Show()
   end
+  ForeverMarketPages=ForeverMarketPages or {};ForeverMarketPages[id]=panel.selectTab
   b:SetScript('OnClick',panel.selectTab)
 end
 

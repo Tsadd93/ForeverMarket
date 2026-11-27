@@ -63,7 +63,7 @@ The starter reference covers 100 commodities on the sampled US Horde Forever mar
 
 **Bank and mail.** Open **Tools → Mail & bank** while at your personal bank or on a viewable guild bank tab with withdrawals available. Click **Withdraw** for the displayed quantity. Each transfer requires a free general bag slot. An explicit item route can also stage personal-bank stock for its assigned recipient. At the mailbox the same queue groups attachments by recipient and updates after bag and mail changes.
 
-**Continuous scanning.** Market Buy **Watch** repeats your favorites. **Radar** searches broadly among eligible items and alerts in chat when it verifies an affordable deal. **Stop** or closing the tab ends the scan. Repeated alerts for the same item have a five-minute cooldown. All purchases require a click.
+**Continuous scanning.** Market Buy **Watch** repeats your favorites. **Radar** searches broadly among eligible items and alerts in chat when it verifies an affordable deal. **Stop** or closing the tab ends the scan. Radar alerts again when the price improves, more units qualify, or a qualifying offer returns. All purchases require a click.
 
 **Live comparison.** Open Market Buy, set the fund and target, and type `/fm benchmark` to check up to 50 eligible items once. Once a full sample is available, subsequent runs use the same IDs for the venue. `/fm benchlist` displays the names for copying into another shopping addon. `/fm watchreport` reports time to first deal, elapsed time, checked items and unanswered lookups for recent completed passes. Comparisons should use the same cash, price criteria and venue. Listings can change between runs.
 
@@ -74,6 +74,16 @@ Market Buy checks ordinary flips against protected items, crafting and bag reser
 Basket totals add the quantities available within your targets, caps, observed supply and spendable cash, in the displayed item order. An accepted live quote updates the total. Remaining units are displayed separately.
 
 Click the four balances on Market Buy for **Spendable**, **Stock cost**, **Due est.** and **Realized**. Spendable explains the cash balance, reservations, outstanding deposits and any reconciliation difference. Its journal keeps the latest 500 cash movements and carries earlier movements into an opening balance. Existing funds start the journal at their current cash. Sold stock stays at cost for reconciliation until collection. Pending proceeds are estimates. The realized ledger includes matched payouts and confirmed losses, and lists receipts outside matched fund sales separately.
+
+## Home, trading results and gear prices
+
+Open **Market Scan → Market home** or type `/fm home` to reach buying, selling, auction review and Results. **Market Sell → Preview** lists the price or hold reason for each stack before posting. The preview reflects the current sell checks. Open **Results** or type `/fm results` to switch between 7 and 30 days and between flips and investments.
+
+Results groups purchases by purchase date and follows their payouts through today. Purchase cost includes the entire purchase. Profit collected deducts the cost of paid units and confirmed losses. Stock at cost shows the remainder still awaiting payout. Forecast comparisons cover paid units. First payout shows the median time from purchase to its first confirmed collection, using purchases with a recorded first payout. Older purchases without that timestamp still count toward the gold totals.
+
+Gear tooltips show median asking prices for the same item, level and suffix when item searches have captured them. Other suffixes at the same level have a separate middle range. Daily samples prevent one busy day from dominating the estimate. Mail receipts identify sales by name. Group posting rules now use the median daily bulk ask for their realm-price floor.
+
+Market Buy starts cautiously on an item with no paid sales. It can raise the trial quantity after repeat sales with fast observed turnover and no recent expirations. Radar alerts when a verified unit price improves, affordable quantity grows, or a deal qualifies again after a checked offer disappears. At the end of a scan, **Retry** checks unanswered items first by estimated opportunity where available.
 
 ## Optional Windows dashboard
 

@@ -177,12 +177,14 @@ function M.policyFloor(id,force)
   local floor,why=0,nil
   if (group.realmPct or 0)>0 then
     local history=ForeverMarketHistory()[tostring(id)]
-    local total,days,today=0,0,math.floor(time()/86400)
+    local asks,today={},math.floor(time()/86400)
     for day,value in pairs(history and history.floors or {}) do
       day=tonumber(day)
-      if day and day<=today and day>today-15 then total=total+value;days=days+1 end
+      if day and day<=today and day>today-15 then asks[#asks+1]=value end
     end
-    if days>0 then floor=math.ceil(total/days*group.realmPct/100) else why='Need realm bulk-price history' end
+    if #asks>0 then
+      table.sort(asks);local n=#asks
+      floor=math.ceil((asks[math.ceil(n/2)]+asks[math.floor(n/2)+1])*group.realmPct/200) else why='Need realm bulk-price history' end
   end
   if (group.craftPct or 0)>0 then
     local cheapest
@@ -233,4 +235,82 @@ function M.checkPostPolicy(id,qty,unit,force,incoming)
     end
     if posted+qty>g.postCap then return 'Group listed-unit cap' end
   end
+end
+
+local function median(values)
+  local n=#values
+  if n==0 then return end
+  table.sort(values)
+  return math.floor((values[math.ceil(n/2)]+values[math.floor(n/2)+1])/2+.5)
+end
+function M.tradeResults(days,invest)
+  local s={spent=0,open=0,profit=0,forecast=0,paid=0,count=0,items={}}
+  local delays={}
+  for _,r in ipairs(ForeverMarketTradingFund().flips or {}) do
+    if r.at and r.at>=time()-days*86400 and r.n>0 and (r.invest==true)==invest then
+      local paid=r.sold or 0
+      local basis=math.floor(r.cost*paid/r.n)
+      local profit=(r.net or 0)-basis-(r.lost or 0)
+      local name=r.name or ('Item '..tostring(r.item));local item=s.items[name] or {profit=0,open=0,paid=0}
+      s.items[name]=item;item.profit=item.profit+profit;item.open=item.open+r.cost-basis;item.paid=item.paid+paid
+      s.spent=s.spent+r.cost;s.open=s.open+r.cost-basis;s.profit=s.profit+profit
+      s.forecast=s.forecast+math.floor((r.expected or 0)*paid/r.n);s.paid=s.paid+paid;s.count=s.count+1
+      if r.firstPaid then delays[#delays+1]=math.max(0,r.firstPaid-r.at) end
+    end
+  end
+  s.timed=#delays;s.delay=median(delays)
+  return s
+end
+
+local function suffix(key,link)
+  local raw=link and link:match('item:%d+:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:(%-?%d+)')
+  local suffix=tonumber(raw)
+  return tostring(suffix and suffix~=0 and suffix or key.itemSuffix or 0)
+end
+local function gearStore()
+  ForeverMarketDB.gearEvidence=ForeverMarketDB.gearEvidence or {}
+  local scope=GetCurrentRegion()..'|'..M.scope()
+  local t=ForeverMarketDB.gearEvidence
+  t[scope]=t[scope] or {};return t[scope]
+end
+function M.recordGearBook(key,count)
+  if not C_Item.GetItemInfoInstant then return end
+  local slot=select(4,C_Item.GetItemInfoInstant(key.itemID))
+  if not slot or slot=='' or (key.battlePetSpeciesID or 0)>0 then return end
+  local api=C_AuctionHouse
+  if api.HasFullItemSearchResults and not api.HasFullItemSearchResults(key) then return end
+  local buckets={}
+  for i=1,count do
+    local r=api.GetItemSearchResultInfo(key,i)
+    if r and r.itemKey and r.itemKey.itemID==key.itemID and r.buyoutAmount and r.buyoutAmount>0 then
+      local link=r.itemLink or (api.GetItemSearchResultItemLink and api.GetItemSearchResultItemLink(key,i))
+      if link then
+        local k=(r.itemKey.itemLevel or 0)..'/'..suffix(r.itemKey,link)
+        buckets[k]=buckets[k] or {};table.insert(buckets[k],math.floor(r.buyoutAmount/math.max(1,r.quantity or 1)))
+      end
+    end
+  end
+  local store=gearStore();local day=math.floor(time()/86400)
+  local series=store[key.itemID] or {}
+  for k,prices in pairs(buckets) do
+    series[k]=series[k] or {};series[k][day]={ask=median(prices),rows=#prices,at=time()}
+  end
+  for k,t in pairs(series) do for d in pairs(t) do if d<day-29 then t[d]=nil end end;if not next(t) then series[k]=nil end end
+  store[key.itemID]=next(series) and series or nil
+end
+function M.gearEvidence(key,link)
+  local set=gearStore()[key.itemID];if not set then return end
+  local level=tostring(key.itemLevel or 0);local exact=level..'/'..suffix(key,link)
+  local first,other={},{};local latest
+  for k,t in pairs(set) do
+    if k:match('^(%d+)/')==level then for day,sample in pairs(t) do
+      if day>=math.floor(time()/86400)-29 then
+        if k==exact then first[#first+1]=sample.ask;if not latest or sample.at>latest.at then latest=sample end
+        else other[day]=other[day] or {};table.insert(other[day],sample.ask) end
+      end
+    end end
+  end
+  local compared={};for _,prices in pairs(other) do compared[#compared+1]=median(prices) end
+  local typical=median(first);local comp=median(compared)
+  return {exact=typical,days=#first,last=latest,other=comp,otherDays=#compared,low=compared[math.max(1,math.ceil(#compared*.25))],high=compared[math.max(1,math.ceil(#compared*.75))]}
 end

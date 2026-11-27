@@ -98,7 +98,7 @@ function M.marketOutcomes(name)
         local r=turnover.byName[key] or {sales=0,returns=0,mature=0,linked=0,hours=0}
         turnover.byName[key]=r
         if e.kind=='proceeds_collected' and e.amount and e.deposit and e.fee and (e.quantity or 0)>0 and e.character==UnitName('player') then
-          if e.at>=now-7*86400 then r.paidWeek=(r.paidWeek or 0)+e.quantity end
+          if e.at>=now-7*86400 then r.paidWeek=(r.paidWeek or 0)+e.quantity;r.receiptsWeek=(r.receiptsWeek or 0)+1 end
           r.paidUnits=(r.paidUnits or 0)+e.quantity;r.receipts=(r.receipts or 0)+1
           local gross=e.amount+e.fee-e.deposit
           r.gross=(r.gross or 0)+gross
@@ -169,6 +169,7 @@ function M.payFlip(lot,e,n,offset)
     local r=ForeverMarketTradingFund().flips[id]
     r.wallet=(r.wallet or 0)+portion(e.amount,offset+start,take,e.quantity)
     r.net=r.net+portion(e.amount-e.deposit,offset+start,take,e.quantity)
+    if r.sold==0 then r.firstPaid=e.at or time() end
     r.listed=r.listed-take;r.sold=r.sold+take;r.lastPaid=e.at or time()
   end)
 end
@@ -561,14 +562,16 @@ local function create()
   panel=CreateFrame('Frame',nil,AuctionHouseFrame,'BackdropTemplate');panel:SetPoint('TOPLEFT',14,-58);panel:SetPoint('BOTTOMRIGHT',-12,39)
   panel:SetFrameLevel(AuctionHouseFrame:GetFrameLevel()+40);panel:EnableMouse(true)
   panel:SetBackdrop({bgFile='Interface\\DialogFrame\\UI-DialogBox-Background-Dark',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',edgeSize=12});panel:SetBackdropColor(.12,.10,.08,1);panel:Hide()
+  ForeverMarketPanelArt(panel)
   for i,m in ipairs({'Auctions','Shopping','Ledger','Rules'}) do button(panel,8+(i-1)*94,-6,91,m,function()mode=m;page=1;confirm=nil;ledgerItem=nil;status:SetText('');refresh() end) end
   button(panel,388,-6,65,'Refresh',refresh);button(panel,455,-6,76,'Browse',function()panel:Hide();M.openDesk()end);button(panel,532,-6,78,'Close',function()panel:Hide()end)
-  button(panel,611,-6,58,'Tools',function()panel:Hide();M.openTools('Basket')end)
+  button(panel,611,-6,58,'Home',function()panel:Hide();M.openTools('Home')end)
   title=label(panel,12,-36,655);status=label(panel,12,-124,650)
   entry=field(15,-74,166);target=field(190,-74,62);cap=field(266,-74,94);listName=field(375,-74,115)
   local function control(m,f) controls[#controls+1]={mode=m,frame=f};return f end
   local function showFlips() mode='Flips';flipIndex=nil;page=1;status:SetText('');render() end
   for _,m in ipairs({'Ledger','Flips','Dip tests'}) do
+    control(m,button(panel,314,-72,110,'Results',function()M.openTools('Results')end))
     control(m,button(panel,12,-72,135,'Fund flips',showFlips))
     control(m,button(panel,152,-72,150,'Investment tests',function()mode='Dip tests';page=1;status:SetText('');render() end))
   end
@@ -620,7 +623,9 @@ local function create()
   end
   for i=1,8 do
     local y=-148-(i-1)*24
+    ForeverMarketRowArt(panel,y+5,635,i)
     local r={name=label(panel,12,y,174),detail=label(panel,190,y,365)}
+    ForeverMarketTextHint(panel,r.name);ForeverMarketTextHint(panel,r.detail)
     r.action=button(panel,558,y+4,74,'',function()if r.data and r.data.click then status:SetText(r.data.click() or '');render() end end);rows[i]=r
   end
   pageLabel=label(panel,96,-346,70)
@@ -633,6 +638,9 @@ local function create()
 end
 function M.openFundSection(section)
   fundSection=section;mode='Fund';page=1;M.openManager()
+end
+function M.openAuctionReview()
+  mode='Auctions';page=1;undercutsOnly=false;M.openManager()
 end
 function M.openManager()
   create();panel:Show();panel.inputs();refresh()

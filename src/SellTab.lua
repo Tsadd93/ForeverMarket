@@ -35,7 +35,7 @@ local function keyOf(k)
 end
 local function label(parent,x,y,width)
   local t=parent:CreateFontString(nil,'OVERLAY','GameFontHighlight')
-  t:SetPoint('TOPLEFT',x,y);t:SetWidth(width);t:SetJustifyH('LEFT');return t
+  t:SetPoint('TOPLEFT',x,y);t:SetWidth(width);t:SetJustifyH('LEFT');t:SetWordWrap(false);return t
 end
 local function button(parent,text,x,y,w,fn)
   local b=CreateFrame('Button',nil,parent,'UIPanelButtonTemplate')
@@ -113,6 +113,10 @@ local function bags()
 end
 local function historicalQuote(s, timedOut)
   local q = {at=GetTime(), timedOut=timedOut}
+  if not s.commodity and ForeverMarketTools and ForeverMarketTools.gearEvidence then
+    local g=ForeverMarketTools.gearEvidence(s.k,s.link)
+    if g and g.exact then q.average=g.exact;q.suffixEvidence=true;return q end
+  end
   local db=ForeverMarketHistory()
   local r=db[ForeverMarketHistoryKey(s.k)]
   if ForeverMarketTools then q.average=ForeverMarketTools.history(ForeverMarketHistoryKey(s.k));return q end
@@ -151,6 +155,7 @@ function ForeverMarketPinnedExit(id,variant)
 end
 local function quoteDetail(q)
   if q.floorPrice then return ForeverMarketCoins(q.floorPrice)..' x '..q.floorQty end
+  if q.suffixEvidence then return 'History / matching suffix' end
   if q.timedOut then return q.average and 'Timeout / history avg' or 'No live response' end
   return q.average and 'No buyouts / history avg' or 'No buyouts or history'
 end
@@ -290,6 +295,24 @@ local function paint()
     row.quote=q;row.reviewedUnit=s and q and price(q,s)
   end
 end
+function ForeverMarketPostingPreview()
+  if managing then return nil,'Finish editing protected items first.' end
+  if not panel or not panel:IsVisible() then return nil,'Open Market Sell at an auctioneer to check your bags.' end
+  local s={ready=0,hold=0,checking=0,rows={},gross=0}
+  for _,r in ipairs(rows) do
+    local slot=r.slot
+    if slot then
+      local n=quantity(slot);local p=r.quote and price(r.quote,slot)
+      local state=r.needsCheck and 'Checking price' or slot.locked and 'Item locked' or slot.holdReason
+      if state then
+        if r.needsCheck then s.checking=s.checking+1 else s.hold=s.hold+1 end
+      elseif n and p then state='Post '..n..' for '..ForeverMarketCoins(n*p);s.ready=s.ready+1;s.gross=s.gross+n*p
+      else state='Waiting for price';s.checking=s.checking+1 end
+      s.rows[#s.rows+1]={name=slot.link,state=state}
+    end
+  end
+  return s
+end
 local function post(row)
   local old=row.slot;if (row.hold and not row.override) or pending or not old then return end
   if managing or blacklist()[old.k.itemID] then return end
@@ -374,6 +397,7 @@ local function result(ev,arg)
       return
     end
   end
+  if not commodity and ForeverMarketTools and ForeverMarketTools.recordGearBook then ForeverMarketTools.recordGearBook(arg,n) end
   caption:SetText("Checked "..query.link.." · "..n.." auction price rows.")
   local q=ForeverMarketPriceDepth(levels)
   if q then
@@ -444,6 +468,7 @@ local function tick(_,dt)
 end
 makeRow=function(i)
   local y=-6-(i-1)*rowHeight
+  ForeverMarketRowArt(content,y+5,672,i)
   local row={name=label(content,12,y,225),detail=label(content,300,y,165),price=label(content,475,y,115)}
   row.hover=ForeverMarketHover(content,y+6,590,row)
   row.hover:SetScript('OnMouseUp',function(_,mouse)
@@ -516,7 +541,7 @@ local function create()
     ForeverMarketDB.matchBulk=not ForeverMarketDB.matchBulk
     self:SetText('Price: '..(ForeverMarketDB.matchBulk and 'Match bulk' or 'Undercut'));paint()
   end)
-  local override=button(panel,'Post held: off',437,-6,151,function(self)
+  local override=button(panel,'Post held: off',432,-6,118,function(self)
     allowHeld=not allowHeld;self:SetText(allowHeld and 'Post held: on' or 'Post held: off');paint()
   end)
   local nextRow,nextKey,nextQuote,nextQty
@@ -540,7 +565,8 @@ local function create()
     caption:SetText(managing and 'Protect items from Market Sell on this character.' or 'Edit Qty to change the stack total.')
     bags();paint()
   end)
-  button(panel,'Refresh',600,-6,75,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
+  button(panel,'Preview',552,-6,65,function()if not managing and ForeverMarketTools and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview') end end)
+  button(panel,'Refresh',619,-6,66,function() paused=false;failures={};warming={};for _,s in ipairs(slots) do if s.key then forceLookup[s.key]=true end end;for key in pairs(quotes) do quotes[key]=nil end;query=nil;paint() end)
   ForeverMarketResults(panel,56,{{'Name',0},{'Qty',237},{'Bulk ask × supply',292},{'Stack total',467},{'Action',592}})
   scroll=CreateFrame('ScrollFrame','ForeverMarketSellScroll',panel,'UIPanelScrollFrameTemplate')
   scroll:SetPoint('TOPLEFT',0,-82)

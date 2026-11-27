@@ -203,7 +203,7 @@ local page,results,watch,vendor,searchIndex=1,{},false,false,0
 local current,previousSnap,usable,scanKey,working,retryInfo
 local function label(parent,x,y,w,caption)
   local t=parent:CreateFontString(nil,'OVERLAY','GameFontHighlightSmall')
-  t:SetWidth(w);t:SetPoint('TOPLEFT',x,y);t:SetJustifyH('LEFT');t:SetText(caption or '');return t
+  t:SetWidth(w);t:SetPoint('TOPLEFT',x,y);t:SetJustifyH('LEFT');t:SetWordWrap(false);t:SetText(caption or '');return t
 end
 local function button(parent,x,y,w,caption,fn)
   local b=CreateFrame('Button',nil,parent,'UIPanelButtonTemplate');b:SetSize(w,22);b:SetPoint('TOPLEFT',x,y);b:SetText(caption);b:SetScript('OnClick',fn);return b
@@ -246,6 +246,7 @@ function M.openDesk()
   if not panel then
     panel=CreateFrame('Frame',nil,AuctionHouseFrame,'BackdropTemplate');panel:SetPoint('TOPLEFT',14,-58);panel:SetPoint('BOTTOMRIGHT',-12,39)
     panel:SetFrameLevel(AuctionHouseFrame:GetFrameLevel()+50);panel:EnableMouse(true);panel:SetBackdrop({bgFile='Interface\\DialogFrame\\UI-DialogBox-Background-Dark'});panel:SetBackdropColor(.1,.09,.08,1)
+    ForeverMarketPanelArt(panel)
     fields={qty=input(505,-48,54,'Buy qty'),term=input(12,-8,177,'Item, link or category'),level=input(202,-8,49,'Max lvl'),quality=input(259,-8,55,'Quality'),max=input(326,-8,94,'Max each')}
     fields.qty:SetText('1')
     fields.qty:SetScript('OnTextChanged',function(_,user)
@@ -273,6 +274,7 @@ function M.openDesk()
     button(panel,580,-55,70,'Close',function()panel:Hide()end)
     rows={};for i=1,8 do
       local y=-114-(i-1)*25
+      ForeverMarketRowArt(panel,y+5,626,i)
       local r={name=label(panel,12,y,235),price=label(panel,252,y,158)}
       r.star=button(panel,417,y+4,85,'Watch',function()local id=r.data.id;prefs().favorites[id]=not M.favorite(id) or nil;search()end)
       r.shop=button(panel,512,y+4,110,'Shop',function()
@@ -300,7 +302,7 @@ function M.openDesk()
         GameTooltip:Show() end end)
       hit:SetScript('OnLeave',function()GameTooltip:Hide()end);rows[i]=r
     end
-    status=label(panel,12,-84,635);pager=label(panel,92,-323,72)
+    status=label(panel,12,-90,635);pager=label(panel,92,-323,72)
     button(panel,10,-318,75,'Previous',function()page=page-1;showResults()end);button(panel,164,-318,70,'Next',function()page=page+1;showResults()end)
     for _,e in pairs(fields) do e:SetScript('OnEnterPressed',function(self)self:ClearFocus();search()end) end
     local elapsed=0
@@ -333,6 +335,7 @@ function M.openGroups()
     local p=CreateFrame('Frame',nil,panel,'BackdropTemplate');M.groupsPanel=p
     p:SetPoint('TOPLEFT',1,-4);p:SetPoint('BOTTOMRIGHT',-1,1);p:SetFrameLevel(panel:GetFrameLevel()+10);p:EnableMouse(true)
     p:SetBackdrop({bgFile='Interface\\DialogFrame\\UI-DialogBox-Background-Dark'});p:SetBackdropColor(.1,.09,.08,1)
+    ForeverMarketPanelArt(p)
     local function field(x,y,w,title,default)
       label(p,x,y,w,title);local e=CreateFrame('EditBox',nil,p,'InputBoxTemplate')
       e:SetSize(w,21);e:SetPoint('TOPLEFT',x,y-20);e:SetAutoFocus(false);e:SetText(default);return e

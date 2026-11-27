@@ -39,6 +39,41 @@ function ForeverMarketVariant(k,link)
   while #parts>1 and parts[#parts]=='' do table.remove(parts) end
   return table.concat({k.itemID,k.itemLevel or 0,k.itemSuffix or 0,table.concat(parts,':')},'/')
 end
+-- Use the client's auction art and fonts on each market surface.
+function ForeverMarketTextHint(owner,region)
+  if not region or not region.IsTruncated then return end
+  local hit=CreateFrame('Frame',nil,owner)
+  hit:SetAllPoints(region)
+  if hit.SetMouseMotionEnabled and hit.SetMouseClickEnabled then
+    hit:SetMouseMotionEnabled(true);hit:SetMouseClickEnabled(false)
+  elseif hit.SetPropagateMouseClicks then
+    hit:EnableMouse(true);hit:SetPropagateMouseClicks(true)
+  end
+  hit:SetScript('OnEnter',function(self)
+    if region:IsTruncated() then
+      GameTooltip:SetOwner(self,'ANCHOR_RIGHT');GameTooltip:AddLine(region:GetText(),1,.93,.78,true);GameTooltip:Show()
+    end
+  end)
+  hit:SetScript('OnLeave',function(self)if GameTooltip:IsOwned(self) then GameTooltip:Hide() end end)
+end
+function ForeverMarketPanelArt(panel)
+  if panel.fmArt or not panel.CreateTexture then return end
+  local bg=panel:CreateTexture(nil,'BACKGROUND',nil,1)
+  bg:SetPoint('TOPLEFT',5,-4);bg:SetPoint('BOTTOMRIGHT',-5,4)
+  if C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo('auctionhouse-background-index') then
+    bg:SetAtlas('auctionhouse-background-index')
+  else bg:SetTexture('Interface\\FrameGeneral\\UI-Background-Marble') end
+  if bg.SetVertexColor then bg:SetVertexColor(.65,.60,.51,.94) end
+  panel.fmArt=bg
+end
+function ForeverMarketRowArt(parent,y,w,index)
+  if not parent.CreateTexture then return end
+  local t=parent:CreateTexture(nil,'BACKGROUND',nil,3)
+  if not t.SetColorTexture then return end
+  t:SetPoint('TOPLEFT',5,y);t:SetSize(w,22)
+  if index%2==0 then t:SetColorTexture(.64,.49,.24,.10) else t:SetColorTexture(.08,.055,.03,.18) end
+  return t
+end
 function ForeverMarketResults(panel,top,columns)
   local inset=CreateFrame('Frame',nil,panel,'InsetFrameTemplate')
   inset:SetPoint('TOPLEFT',0,-top);inset:SetPoint('BOTTOMRIGHT',0,2)
@@ -56,7 +91,7 @@ function ForeverMarketResults(panel,top,columns)
     h:SetBackdrop({bgFile='Interface\\Buttons\\WHITE8X8',edgeFile='Interface\\Tooltips\\UI-Tooltip-Border',edgeSize=8,insets={left=2,right=2,top=2,bottom=2}})
     h:SetBackdropColor(.15,.13,.11,.96);h:SetBackdropBorderColor(.58,.55,.49,.85)
     local title=h:CreateFontString(nil,'OVERLAY','GameFontNormalSmall')
-    title:SetPoint('LEFT',8,0);title:SetTextColor(1,.97,.87);title:SetText(c[1])
+    title:SetPoint('LEFT',8,0);title:SetPoint('RIGHT',-5,0);title:SetJustifyH('LEFT');title:SetWordWrap(false);title:SetTextColor(1,.97,.87);title:SetText(c[1])
   end
 end
 function ForeverMarketHover(parent,y,width,row)
@@ -160,9 +195,11 @@ end)
 SLASH_FOREVERMARKET1='/fm'
 SlashCmdList.FOREVERMARKET=function(msg)
   msg=(msg or ''):lower():match('^%s*(.-)%s*$')
-  if msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()
+  if msg=='preview' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Preview')
+  elseif msg=='version' and ForeverMarketVersionStatus then ForeverMarketVersionStatus()
   elseif msg=='manage' and ForeverMarketTools and ForeverMarketTools.openManager and AuctionHouseFrame and AuctionHouseFrame:IsShown() then ForeverMarketTools.openManager()
-  elseif msg=='tools' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Basket')
+  elseif msg=='results' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Results')
+  elseif (msg=='tools' or msg=='home') and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Home')
   elseif msg=='farm' and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Farming')
   elseif msg=='scan' and ForeverMarketScan then ForeverMarketScan()
   elseif msg=='' or msg=='export' then export(false)
@@ -192,8 +229,8 @@ SlashCmdList.FOREVERMARKET=function(msg)
   elseif msg=='scanstatus' then
     local r=ForeverMarketDB and ForeverMarketDB.lastBuyScan
     if not r then print('Forever Market: no Buy scan recorded yet.');return end
-    print(('Forever Market: %s · %s · %ds · %g%% target'):format(r.source,r.state or 'starting',r.elapsed or 0,r.target/100))
-    print(('%d eligible · %d screened · %d detail requests · %d checked · %d unanswered'):format(r.candidates or 0,r.screened or 0,r.detailRequests or 0,r.checked or 0,r.unanswered or 0))
+    print(('Forever Market: %s Â· %s Â· %ds Â· %g%% target'):format(r.source,r.state or 'starting',r.elapsed or 0,r.target/100))
+    print(('%d eligible Â· %d screened Â· %d detail requests Â· %d checked Â· %d unanswered'):format(r.candidates or 0,r.screened or 0,r.detailRequests or 0,r.checked or 0,r.unanswered or 0))
     print('Market: '..ForeverMarketVenueRealm()..' / '..UnitFactionGroup('player')..' / '..(r.firstBuy and ('first deal '..math.floor(r.firstBuy)..'s') or 'no verified deal recorded'))
     print(('Short history %d / no supply %d / over budget %d / spread %d'):format(r.thinHistory or 0,r.noSupply or 0,r.overBudget or 0,r.weakSpread or 0))
     if r.repostExample then local e=r.repostExample;print('Resale check: '..(C_Item.GetItemNameByID(e.id) or tostring(e.id))..' / '..e.reason) end

@@ -92,6 +92,11 @@ local investScan=false
 local watchScan=false
 local watchAgain=0
 local watchAlerts={}
+local retryPool={}
+local function rememberFailure(lead)
+  if not lead or not lead.id then return end
+  retryPool[lead.id]=lead
+end
 local itemConfirmation=false
 local scanWait
 local scanWake=false
@@ -171,6 +176,7 @@ local function finishCategory(fallback)
       group.retried=true;group.count=nil;group.processed=nil;group.more=nil
       categories[#categories+1]=group
     else
+      for _,lead in ipairs(group.items) do rememberFailure(lead) end
       unanswered=unanswered+#group.items
     end
     browseFallback=browseFallback+1;scanWake=true;return
@@ -558,9 +564,13 @@ local function demand(v)
   local held=onHand()[v.id] or 0
   local probe=math.min(v.stack,5)
   local limit=sold>0 and sold or probe
+  local repeatSales=observed and (observed.receiptsWeek or 0)>=2 and observed.returns==0 and (observed.linked or 0)>=2 and observed.hours/observed.linked<=24
+  if repeatSales and sold>0 then limit=limit+math.min(probe,math.ceil(sold*.25)) end
   if observed and observed.returns>0 and sold==0 then limit=1 end
-  if observed and observed.linked>0 and observed.hours/observed.linked>72 then limit=math.max(1,math.ceil(limit/2)) end
-  return math.max(0,limit-held),sold..' paid units in 7 days / '..held..' already owned or ordered'
+  if observed and (observed.linked or 0)>0 and observed.hours/observed.linked>72 then limit=math.max(1,math.ceil(limit/2)) end
+  local evidence=sold>0 and (sold..' paid units in 7 days') or observed and observed.returns>0 and 'Recent expiry without a paid sale' or 'Trial quantity / no recent paid sales'
+  if repeatSales then evidence=evidence..' / trial increased after repeat sales' end
+  return math.max(0,limit-held),evidence..' / '..held..' already owned or ordered'
 end
 local function repostOK(v,n,dep,force)
   local m=ForeverMarketTools
@@ -744,8 +754,9 @@ local function render()
     local id=p.v.id
     active[id]=true
     if watchScan=='bench' then report.benchHits=report.benchHits or {};report.benchHits[id]=true end
-    if watchScan and (not watchAlerts[id] or GetTime()-watchAlerts[id]>300) then
-      watchAlerts[id]=GetTime()
+    local alerted=watchAlerts[id]
+    if watchScan and (not alerted or p.v.low<alerted.price or p.n>alerted.n) then
+      watchAlerts[id]={price=p.v.low,n=p.n}
       print('Forever Market deal: '..(C_Item.GetItemNameByID(p.v.itemID or id) or tostring(id))..' x '..p.n..' at '..ForeverMarketCoins(p.v.low)..' each.')
     end
     for j=#(report and report.misses or {}),1,-1 do if report.misses[j].id==id then table.remove(report.misses,j) end end
@@ -753,6 +764,7 @@ local function render()
     remembered[id]={pick=p}
   end
   local buyCount=#list
+  if ForeverMarketTools then ForeverMarketTools.visibleDeals={at=GetTime(),scope=GetRealmName(),count=buyCount} end
   if buyCount>0 and not firstResult and startedAt then firstResult=GetTime()-startedAt end
   updateReport(completed and "complete" or running and (search and "checking" or browse and "browsing" or scanWait or "scanning") or "stopped")
   for _,id in ipairs(displayOrder) do
@@ -775,6 +787,9 @@ local function render()
     if not row then
       local y=-(i-1)*26-6
       row={name=label(content,8,y),qty=label(content,221,y),cost=label(content,269,y),profit=label(content,434,y)}
+      ForeverMarketRowArt(content,y+5,672,i)
+      row.qty:SetWidth(42);row.cost:SetWidth(156);row.profit:SetWidth(154)
+      for _,t in ipairs({row.qty,row.cost,row.profit}) do t:SetJustifyH('LEFT');t:SetWordWrap(false) end
       row.name:SetWidth(205);row.name:SetJustifyH('LEFT');row.name:SetWordWrap(false)
       row.hover=ForeverMarketHover(content,-(i-1)*26,590,row)
       row.btn=CreateFrame('Button',nil,content,'UIPanelButtonTemplate');row.btn:SetSize(72,21);row.btn:SetPoint('TOPLEFT',600,-(i-1)*26)
@@ -892,6 +907,8 @@ local function inspect(id)
       if remembered[id] then remembered[id].reason=nil end
     end
   end
+  if watchScan and not verified[id] then watchAlerts[id]=nil end
+  retryPool[id]=nil
   if not search.recheck then checked=checked+1 end;search=nil;scanWake=true
   render()
 end
@@ -906,6 +923,7 @@ local function inspectItems(key)
     end
     return
   end
+  if ForeverMarketTools and ForeverMarketTools.recordGearBook then ForeverMarketTools.recordGearBook(key,count) end
   local groups={}
   for i=1,count do
     local r=api.GetItemSearchResultInfo(key,i)
@@ -947,7 +965,8 @@ local function inspectItems(key)
   end
   if waiting and not best then lead.waitKey=key;return end
   retire(lead.id,'No qualifying buyout')
-  if best and itemConfirmation then verified[lead.id]=best end
+  if best and itemConfirmation then verified[lead.id]=best elseif watchScan then watchAlerts[lead.id]=nil end
+  retryPool[lead.id]=nil
   if not search.recheck then checked=checked+1 end;search=nil;scanWake=true;render()
 end
 local recheckedLast=false
@@ -999,7 +1018,7 @@ local function tick(refreshUI)
   if search and search.waitKey and refreshUI then inspectItems(search.waitKey) end
   if search and search.waitItem and refreshUI then inspect(search.id) end
   if search and GetTime()-lastSearch>8 then
-    if search.retried then retire(search.id,'No live response');if not search.recheck then unanswered=unanswered+1 end
+    if search.retried then rememberFailure(search);retire(search.id,'No live response');if not search.recheck then unanswered=unanswered+1 end
     else search.retried=true;leads[#leads+1]=search end
     search=nil
   end
@@ -1018,7 +1037,7 @@ local function tick(refreshUI)
     if api.GetItemKeyInfo and not info then
       scanWait='Loading item '..lead.id
       if not lead.warmAt then lead.warmAt=GetTime() end
-      if GetTime()-lead.warmAt<15 then leads[#leads+1]=lead else retire(lead.id,'Item data unavailable');unanswered=unanswered+1 end
+      if GetTime()-lead.warmAt<15 then leads[#leads+1]=lead else rememberFailure(lead);retire(lead.id,'Item data unavailable');unanswered=unanswered+1 end
     else
       recheckedLast=lead.recheck
       lead.pageCount=nil;lead.waitItem=nil
@@ -1042,20 +1061,20 @@ local function create()
   if not AuctionHouseFrame then return end
   panel=CreateFrame('Frame',nil,AuctionHouseFrame);panel:SetPoint('TOPLEFT',20,-60);panel:SetPoint('BOTTOMRIGHT',-30,45);panel:Hide()
   balance=label(panel,4,-4);balance:SetWidth(160);balance:SetJustifyH('LEFT');balance:SetWordWrap(false)
-  status=label(panel,4,-37);detail=label(panel,4,-55)
+  status=label(panel,4,-37);detail=label(panel,4,-57)
   for _,line in ipairs({status,detail}) do
-    line:SetPoint('TOPRIGHT',panel,'TOPRIGHT',line==status and -6 or -145,line==status and -37 or -55)
+    line:SetPoint('TOPRIGHT',panel,'TOPRIGHT',line==status and -6 or -216,line==status and -37 or -57)
     line:SetJustifyH('LEFT');line:SetWordWrap(false)
   end
   if ForeverMarketTools and ForeverMarketTools.fundSummary then
     for i,s in ipairs({{'Spendable','cash'},{'Stock cost','inventory'},{'Due est.','pending'},{'Realized','profit'}}) do
       local b=CreateFrame('Button',nil,panel,'UIPanelButtonTemplate')
-      b:SetSize(157,20);b:SetPoint('TOPLEFT',(i-1)*160,-77);b.caption=s[1];b.section=s[2]
+      b:SetSize(157,20);b:SetPoint('TOPLEFT',(i-1)*160,-82);b.caption=s[1];b.section=s[2]
       b:SetScript('OnClick',function()ForeverMarketTools.openFundSection(s[2])end)
       fundButtons[i]=b
     end
   end
-  ForeverMarketResults(panel,103,{{'Name',0},{'Qty',213},{'Buy total',261},{'Est. profit',426},{'Action',592}})
+  ForeverMarketResults(panel,107,{{'Name',0},{'Qty',213},{'Buy total',261},{'Est. profit',426},{'Action',592}})
   local edit=CreateFrame('EditBox',nil,panel,'InputBoxTemplate');edit:SetSize(45,24);edit:SetPoint('TOPLEFT',178,0);edit:SetAutoFocus(false)
   local set=CreateFrame('Button',nil,panel,'UIPanelButtonTemplate');set:SetSize(92,24);set:SetPoint('TOPLEFT',230,0);set:SetText('Set fund (gold)')
   set:SetScript('OnClick',function()
@@ -1083,6 +1102,7 @@ local function create()
     end
     if fund().pending then fundMessageUntil=GetTime()+5;note('Waiting for purchase confirmation.');return end
     target:ClearFocus();ForeverMarketDB.buyTargetBP=math.floor(pct*100+.5)
+    retryPool={}
     pausedMarket=nil;clearQuote();remembered,displayOrder={},{};running=true;completed=false;fundMessageUntil=0
     verified={};search=nil;browse=nil;quote=nil
     startedAt=GetTime();firstResult=nil;requests=0;snapshotMode=false
@@ -1105,6 +1125,15 @@ local function create()
   end
   local startButton=control('Start',442,function()investScan=false;watchScan=false;start() end)
   local resume=control('Resume',0,function()
+    if not pausedMarket and completed and next(retryPool) then
+      if fund().pending or quote then return end
+      leads={};for _,lead in pairs(retryPool) do
+        lead.retried=nil;lead.warmAt=nil;lead.waitKey=nil;lead.waitItem=nil;lead.pageCount=nil
+        leads[#leads+1]=lead
+      end
+      table.sort(leads,function(a,b)if (a.potential or 0)==(b.potential or 0) then return a.id<b.id end return (a.potential or 0)>(b.potential or 0) end)
+      retryPool={};cursor=1;unanswered=0;completed=false;running=true;scanWake=true;report.finished=nil;return
+    end
     if pausedMarket~=GetRealmName() then return end
     if tonumber(target:GetText())~=report.target/100 then
       fundMessageUntil=GetTime()+5;note('Target changed. Press Start for a new scan.');return
@@ -1115,7 +1144,7 @@ local function create()
     verified={};stock=nil;pausedMarket=nil;running=true;report.finished=nil;report.cash=available()
     fundMessageUntil=0;scanWake=true;render()
   end)
-  if resume.ClearAllPoints then resume:ClearAllPoints() end;resume:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-73,-55)
+  if resume.ClearAllPoints then resume:ClearAllPoints() end;resume:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-73,-57)
   local stopButton=control('Stop',511,function()
     pausedMarket=nil;watchScan=false;running=false;completed=false;search=nil;browse=nil;clearQuote();fundMessageUntil=0;render()
   end)
@@ -1124,7 +1153,7 @@ local function create()
   if invest.ClearAllPoints then invest:ClearAllPoints() end;invest:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-32)
   if ForeverMarketTools then
   local explain=control('Report',0,function()SlashCmdList.FOREVERMARKET('scanstatus')end)
-  explain:ClearAllPoints();explain:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-55)
+  explain:ClearAllPoints();explain:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-57)
   local wb=control('Watch',0,function()
     if not ForeverMarketTools or not ForeverMarketTools.favorite then return end
     investScan=false;watchScan=true;watchAgain=GetTime()+60;start()
@@ -1133,9 +1162,9 @@ local function create()
   local radar=control('Radar',0,function()
     investScan=false;watchScan='market';watchAlerts={};watchAgain=GetTime()+60;start()
   end)
-  radar:ClearAllPoints();radar:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-55) end
+  radar:ClearAllPoints();radar:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-145,-57) end
   if ForeverMarketTools then local b=control('Materials',0,function() ForeverMarketTools.openMaterials() end);b:ClearAllPoints();b:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-2,-32);status:ClearAllPoints();status:SetPoint('TOPLEFT',4,-37);status:SetPoint('TOPRIGHT',panel,'TOPRIGHT',-215,-37) end
-  scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-131);scroll:SetPoint('BOTTOMRIGHT',-26,4)
+  scroll=CreateFrame('ScrollFrame','ForeverMarketBuyScroll',panel,'UIPanelScrollFrameTemplate');scroll:SetPoint('TOPLEFT',0,-135);scroll:SetPoint('BOTTOMRIGHT',-26,4)
   content=CreateFrame('Frame',nil,scroll);content:SetSize(678,1);scroll:SetScrollChild(content)
   panel:SetScript('OnShow',function()
     if pausedMarket~=GetRealmName() then pausedMarket=nil;remembered,displayOrder,verified={},{},{} end
@@ -1159,7 +1188,8 @@ local function create()
     scanElapsed=0
     local refreshUI=uiElapsed>=.5
     if refreshUI then uiElapsed=0 end
-    resume:SetShown(pausedMarket~=nil);startButton:SetEnabled(not running);stopButton:SetEnabled(running or watchScan)
+    local retry=completed and next(retryPool)~=nil
+    resume:SetText(retry and 'Retry' or 'Resume');resume:SetShown(pausedMarket~=nil or retry);startButton:SetEnabled(not running);stopButton:SetEnabled(running or watchScan)
     if watchScan and watchScan~='bench' and completed and not running and not fund().pending and not quote and GetTime()>=watchAgain then watchAgain=GetTime()+60;start();return end
     if running then tick(refreshUI) elseif refreshUI then
       if quote and GetTime()-quote.at>9 then clearQuote() end

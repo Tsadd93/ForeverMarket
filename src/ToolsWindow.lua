@@ -1,6 +1,7 @@
 local M=ForeverMarketTools
-local f,field,second,hint,summary,message,pager
-local rows,actions,chart={}, {}, {}
+local f,field,second,hint,summary,message,pager,viewport,heading,emblem
+local rows,actions,chart,nav,cards={}, {}, {},{},{}
+local resultDays,invest=7,false
 local mode,page,days='Basket',1,7
 local preview,chain,lastQuote
 local content={}
@@ -10,7 +11,7 @@ local function itemID(text)
   return tonumber(text:match('item:(%d+)') or text:match('^(%d+)$')) or tonumber((select(2,C_Item.GetItemInfo(text)) or ''):match('item:(%d+)'))
 end
 local function font(x,y,w)
-  local t=f:CreateFontString(nil,'OVERLAY','GameFontHighlightSmall');t:SetPoint('TOPLEFT',x,y);t:SetWidth(w);t:SetJustifyH('LEFT');t:SetWordWrap(false);return t
+  local t=f:CreateFontString(nil,'OVERLAY','GameFontHighlightSmall');t:SetPoint('TOPLEFT',x,y);t:SetWidth(w);t:SetJustifyH('LEFT');t:SetWordWrap(false);if t.SetHeight then t:SetHeight(18) end;if ForeverMarketTextHint then ForeverMarketTextHint(f,t) end;return t
 end
 local function button(x,y,w,text,fn)
   local b=CreateFrame('Button',nil,f,'UIPanelButtonTemplate');b:SetSize(w,22);b:SetPoint('TOPLEFT',x,y);b:SetText(text);b:SetScript('OnClick',fn);return b
@@ -162,10 +163,70 @@ local function farming()
   end
   for k,r in pairs(routes) do add(k..' ('..r.n..')','Vendor '..coins(r.vendor*3600/r.elapsed)..' / AH est. '..coins(r.market*3600/r.elapsed)..' / paid '..coins(r.returned*3600/r.elapsed)) end
 end
+local selectTab
+local function openAH(key)
+  if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
+  if not ForeverMarketPages or not ForeverMarketPages[key] then return 'This page is still loading.' end
+  f:Hide();ForeverMarketPages[key]()
+end
+local function home()
+  hint:SetText('Choose what you came to do. Buying and posting always require your click.')
+  summary:SetText('At the auction house')
+  local s=ForeverMarketPostingPreview and ForeverMarketPostingPreview()
+  local deals=M.visibleDeals
+  local count=deals and GetTime()-deals.at<60 and deals.scope==ForeverMarketVenueRealm() and deals.count
+  add('Sell from my bags',s and (s.ready..' stacks ready / '..s.checking..' checking prices') or 'Check prices, choose quantities, then post.','Sell',function()return openAH('ForeverMarketSell')end)
+  add('Find a deal',count and count>0 and (count..' recently verified deals. Check the current offer.') or 'Set your fund and return target, then start a scan.','Buy',function()return openAH('ForeverMarketBuy')end)
+  add('Review my auctions','Check undercuts, returns and expected proceeds.','Review',function()
+    if not AuctionHouseFrame or not AuctionHouseFrame:IsShown() then return 'Visit an auctioneer first.' end
+    f:Hide();if M.openAuctionReview then M.openAuctionReview() else M.openManager() end
+  end)
+  add('See my results','See what you spent and how much gold came back.','Results',function()selectTab('Results')end)
+  if M.saleTotals and AuctionHouseFrame and AuctionHouseFrame:IsShown() then local _,mail,_,_,_,pending=M.saleTotals()
+    if (mail or 0)>0 or (pending or 0)>0 then add('Collect sale mail',coins(mail or 0)..' last seen in mail / '..coins(pending or 0)..' estimated pending') end
+  end
+  add('Buy supplies','Set the quantity you want to keep for each item.','Basket',function()selectTab('Basket')end)
+end
+local function postingPreview()
+  hint:SetText('Review the current sell list. Return to Market Sell to post a stack.')
+  action(1,'Back to Sell',function()return openAH('ForeverMarketSell')end)
+  local s,why=ForeverMarketPostingPreview()
+  if not s then summary:SetText(why);return end
+  summary:SetText(('%d ready stacks / %d held / %d checking / gross %s'):format(s.ready,s.hold,s.checking,coins(s.gross)))
+  for _,r in ipairs(s.rows) do add(r.name,r.state) end
+end
+local function results()
+  hint:SetText('Choose purchases from the last 7 or 30 days. Figures update when you collect sale mail.')
+  action(1,resultDays==7 and '7 days (selected)' or '7 days',function()resultDays=7;page=1 end)
+  action(2,resultDays==30 and '30 days (selected)' or '30 days',function()resultDays=30;page=1 end)
+  action(3,invest and 'Flips' or 'Flips (selected)',function()invest=false;page=1 end)
+  action(4,invest and 'Investments (selected)' or 'Investments',function()invest=true;page=1 end)
+  local r=M.tradeResults(resultDays,invest)
+  summary:SetText(r.count..' purchases / '..r.paid..' units paid')
+  if r.count==0 then
+    message:SetText('')
+    add('No purchases yet',invest and 'Purchases made through Invest will appear here.' or 'Use Market Buy at an auctioneer to start tracking flips.')
+    return
+  end
+  local values={coins(r.spent),coins(r.profit),coins(r.open),r.delay and (math.floor(r.delay/3600)..'h '..math.floor(r.delay%3600/60)..'m') or 'No payout yet'}
+  for i,card in ipairs(cards) do card:Show();card.value:SetText(values[i]) end
+  message:SetText('Forecast on paid units '..coins(r.forecast)..' / first payout recorded for '..r.timed..' purchases.')
+
+  local names={};for name in pairs(r.items) do names[#names+1]=name end
+  table.sort(names,function(a,b)if r.items[a].profit==r.items[b].profit then return a<b end return r.items[a].profit>r.items[b].profit end)
+  for _,name in ipairs(names) do local item=r.items[name];add(name,coins(item.profit)..' profit / '..coins(item.open)..' open') end
+end
 refresh=function()
   if not f or not f:IsShown() then return end
-  content={};for _,t in pairs(chart) do t:Hide() end;for _,b in ipairs(actions) do b:Hide() end
-  if mode=='Basket' then basket() elseif mode=='Import' then imports() elseif mode=='Mail & bank' then logistics()
+  content={};for _,c in ipairs(cards) do c:Hide() end;for _,t in pairs(chart) do t:Hide() end;for _,b in ipairs(actions) do b:Hide() end
+  local inputs=mode~='Results' and mode~='Home' and mode~='Preview'
+  field:SetShown(inputs);if viewport then viewport:SetShown(inputs) end;second:SetShown(inputs)
+  if heading then
+    heading:SetShown(not inputs);emblem:SetShown(not inputs)
+    heading:SetText(mode=='Home' and 'Auction house' or mode=='Results' and 'Trading results' or 'Posting preview')
+    emblem:SetTexture(mode=='Preview' and 'Interface\\Icons\\INV_Letter_15' or mode=='Home' and 'Interface\\Icons\\INV_Misc_Coin_01' or 'Interface\\Icons\\INV_Misc_Book_09')
+  end
+  if mode=='Home' then home() elseif mode=='Preview' then postingPreview() elseif mode=='Results' then results() elseif mode=='Basket' then basket() elseif mode=='Import' then imports() elseif mode=='Mail & bank' then logistics()
   elseif mode=='Supply plan' then chains() elseif mode=='Farming' then farming()
   else
     hint:SetText('Item ID or name at left. Daily price and supply use separate scales; empty days have no observation.')
@@ -173,20 +234,30 @@ refresh=function()
     local id=itemID(field:GetText());if id then plot(id) else summary:SetText('Enter an item to view its market history.') end
   end
   local history=mode=='History'
-  local per=history and 3 or 8
+  local cardView=mode=='Results' and cards[1] and cards[1]:IsShown()
+  local per=history and 3 or cardView and 5 or 8
   local pages=math.max(1,math.ceil(#content/per));page=math.max(1,math.min(page,pages));pager:SetText(page..' / '..pages)
   for i,row in ipairs(rows) do
+    local y=-(cardView and 236 or 161)-(i-1)*24
+    if row.y~=y then
+      row.y=y;row.left:ClearAllPoints();row.right:ClearAllPoints();row.btn:ClearAllPoints()
+      row.left:SetPoint('TOPLEFT',16,y);row.right:SetPoint('TOPLEFT',210,y);row.btn:SetPoint('TOPLEFT',599,y+5)
+      if row.bg then row.bg:ClearAllPoints();row.bg:SetPoint('TOPLEFT',5,y+5) end
+    end
+    if row.bg then row.bg:SetShown(i<=per) end
     local d=i<=per and content[(page-1)*per+i]
     row.left:SetText(d and d.a or '');row.right:SetText(d and d.b or '')
     row.btn:SetShown(d and d.label and true or false)
     if d and d.label then row.btn:SetText(d.label);row.btn:SetScript('OnClick',function()local msg=d.fn();refresh();if msg then message:SetText(msg) end end) end
   end
 end
-local function selectTab(tab,value)
-  M.cancelMaterial();mode=tab;page=1;preview=nil;chain=nil;field:SetText(value and tostring(value) or '');second:SetText(tab=='Supply plan' and '1' or '')
+selectTab=function(tab,value)
+  M.cancelMaterial();mode=tab;page=1;
+  for key,b in pairs(nav) do if b.SetEnabled then b:SetEnabled(key~=tab) end end
+  preview=nil;chain=nil;field:SetText(value and tostring(value) or '');second:SetText(tab=='Supply plan' and '1' or '')
   if tab=='Basket' then M.restockList();field:SetText(M.account().manager.active) end
   if tab=='Import' then second:SetText('Imported') end
-  field:SetMultiLine(tab=='Import');field:ClearFocus();second:ClearFocus()
+  field:SetMultiLine(tab=='Import');if viewport then viewport:SetVerticalScroll(0) end;field:ClearFocus();second:ClearFocus()
   message:SetText('');refresh()
   if tab=='Import' and value then field:SetFocus();field:HighlightText() end
 end
@@ -196,12 +267,39 @@ function M.openTools(tab,value)
     f:SetSize(695,398);f:SetPoint('CENTER');f:SetFrameStrata('DIALOG');f:SetClampedToScreen(true);f:EnableMouse(true);f:SetMovable(true);f:RegisterForDrag('LeftButton')
     f:SetScript('OnDragStart',f.StartMoving);f:SetScript('OnDragStop',f.StopMovingOrSizing)
     if f.TitleText then f.TitleText:SetText('Forever Market') end
-    for i,tabName in ipairs({'Basket','Mail & bank','Supply plan','History','Farming','Import'}) do button(12+(i-1)*111,-29,106,tabName,function()selectTab(tabName)end) end
-    hint=font(16,-57,665);field=input(18,-77,334);second=input(367,-77,286)
+    if ForeverMarketPanelArt then ForeverMarketPanelArt(f) end
+    for i,tabName in ipairs({'Home','Results','Basket','Mail & bank','Supply plan','History','Farming','Import'}) do
+      nav[tabName]=button(12+(i-1)*84,-29,82,tabName,function()selectTab(tabName)end)
+    end
+    hint=font(16,-56,662);field=input(18,-77,334);second=input(367,-77,286)
+    if field.SetParent and field.SetTextInsets and f.GetWidth then
+      viewport=CreateFrame('ScrollFrame',nil,f)
+      viewport:SetPoint('TOPLEFT',18,-76);viewport:SetSize(334,26)
+      field:SetParent(viewport);field:ClearAllPoints();field:SetSize(334,22);field:SetTextInsets(6,6,2,2)
+      viewport:SetScrollChild(field)
+      field:SetScript('OnCursorChanged',function(_,x,y,w,h)
+        local bottom=math.max(0,-y+h);local offset=viewport:GetVerticalScroll()
+        if bottom>offset+26 then viewport:SetVerticalScroll(bottom-26) elseif -y<offset then viewport:SetVerticalScroll(math.max(0,-y)) end
+      end)
+      viewport:EnableMouseWheel(true);viewport:SetScript('OnMouseWheel',function(self,d)self:SetVerticalScroll(math.max(0,math.min(self:GetVerticalScrollRange(),self:GetVerticalScroll()-d*18)))end)
+    end
+    heading=f:CreateFontString(nil,'OVERLAY','GameFontNormalLarge');heading:SetPoint('TOPLEFT',54,-78);heading:SetWidth(610);heading:SetJustifyH('LEFT');heading:SetWordWrap(false)
+    emblem=f:CreateTexture(nil,'ARTWORK');emblem:SetPoint('TOPLEFT',16,-75);emblem:SetSize(27,27)
     for i=1,4 do actions[i]=button(12+(i-1)*164,-111,156,'',function()end) end
-    summary=font(16,-138,662);message=font(16,-361,664)
+    summary=font(16,-138,662);message=font(16,-354,664)
+    local metrics={{'Purchase cost','INV_Misc_Coin_01'},{'Profit collected','INV_Misc_Coin_02'},{'Stock at cost','INV_Misc_Bag_10'},{'First payout','INV_Misc_PocketWatch_01'}}
+    for i,m in ipairs(metrics) do
+      local c=CreateFrame('Frame',nil,f,'InsetFrameTemplate')
+      c:SetPoint('TOPLEFT',14+(i-1)*167,-159);c:SetSize(163,61)
+      local icon=c:CreateTexture(nil,'ARTWORK');icon:SetTexture('Interface\\Icons\\'..m[2]);icon:SetSize(18,18);icon:SetPoint('TOPLEFT',8,-8)
+      local title=c:CreateFontString(nil,'OVERLAY','GameFontNormalSmall');title:SetPoint('TOPLEFT',32,-9);title:SetWidth(123);title:SetWordWrap(false);title:SetJustifyH('LEFT');title:SetText(m[1])
+      c.value=c:CreateFontString(nil,'OVERLAY','GameFontHighlight');c.value:SetPoint('TOPLEFT',9,-34);c.value:SetWidth(145);c.value:SetJustifyH('LEFT');c.value:SetWordWrap(false)
+      if ForeverMarketTextHint then ForeverMarketTextHint(c,c.value) end
+      c:Hide();cards[i]=c
+    end
     for i=1,8 do local y=-161-(i-1)*24
-      rows[i]={left=font(16,y,190),right=font(210,y,388),btn=button(599,y+5,78,'',function()end)}
+      local stripe=ForeverMarketRowArt and ForeverMarketRowArt(f,y+5,675,i)
+      rows[i]={bg=stripe,left=font(16,y,190),right=font(210,y,388),btn=button(599,y+5,78,'',function()end)}
     end
     button(18,-373,74,'Previous',function()page=page-1;refresh()end);pager=font(99,-378,55)
     button(154,-373,75,'Next',function()page=page+1;refresh()end)
@@ -216,6 +314,9 @@ function M.openTools(tab,value)
       if mode=='Basket' and (key~=lastQuote or M.tripDirty) then lastQuote=key;M.tripDirty=nil;refresh() end
     end)
     if UISpecialFrames then table.insert(UISpecialFrames,'ForeverMarketToolsWindow') end
+  end
+  if UIParent and UIParent.GetWidth and f.SetScale then
+    f:SetScale(math.min(1,(UIParent:GetWidth()-16)/695,(UIParent:GetHeight()-16)/398))
   end
   f:Show();f:Raise();selectTab(tab or 'Basket',value)
 end

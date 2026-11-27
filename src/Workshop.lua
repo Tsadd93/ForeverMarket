@@ -97,6 +97,7 @@ local function create()
   ForeverMarketResults(panel,80,{{'Recipe / material',0},{'Missing materials',202},{'Profit / cost',447},{'Action',566}})
   for i=1,9 do
     local y=-108-(i-1)*23
+    ForeverMarketRowArt(panel,y+5,657,i)
     local row={name=text(panel,6,y,192),info=text(panel,206,y,236),value=text(panel,451,y,109)}
     row.action=button(panel,568,y+4,83,'Add',function()
       local d=row.data;if not d then return end
@@ -150,9 +151,9 @@ local function create()
     row.hover:SetScript('OnLeave',function() GameTooltip:Hide() end)
     rows[i]=row
   end
-  button(panel,483,0,44,'Prev',function()page=math.max(1,page-1);render()end)
-  panel.page=text(panel,520,-5,60)
-  button(panel,580,0,48,'Next',function()page=page+1;render()end)
+  button(panel,8,-321,86,'Previous',function()page=math.max(1,page-1);render()end)
+  panel.page=text(panel,101,-326,65)
+  button(panel,170,-321,75,'Next',function()page=page+1;render()end)
   panel:SetScript('OnShow',function()
     local s=M.settings();fee:SetText(s.cutBP/100);loss:SetText(s.lostDepositPerUnit)
     if ForeverMarketSnapshot then ForeverMarketSnapshot() end
@@ -167,7 +168,8 @@ local function totals()
   if not parent or not parent:IsVisible() then return end
   if not summary then
     summary=parent:CreateFontString(nil,'OVERLAY','GameFontNormalSmall')
-    summary:SetPoint('TOPRIGHT',parent,'TOPRIGHT',-12,-4)
+    summary:SetPoint('TOPRIGHT',parent,'TOPRIGHT',-12,-4);summary:SetPoint('TOPLEFT',parent,'TOPLEFT',132,-4);summary:SetJustifyH('RIGHT');summary:SetWordWrap(false)
+    if summary.SetMaxLines then summary:SetMaxLines(2) end;ForeverMarketTextHint(parent,summary)
   end
   local l,i,c,unknown,sold,estimate=M.saleTotals()
   local full=not C_AuctionHouse.HasFullOwnedAuctionResults or C_AuctionHouse.HasFullOwnedAuctionResults()
@@ -183,6 +185,10 @@ local function itemValues(tip,id,link,n,bound,k,variant)
   if not post and key and key~=tostring(id) then
     post,at,source,bulk=M.prices(id);source='Base item estimate'
   end
+  local gear=variant and k and M.gearEvidence and M.gearEvidence(k,link)
+  if gear and gear.exact and not bulk then
+    post,at,source=gear.exact,gear.last.at,'Historical ask / matching suffix and level'
+  end
   local _,_,_,_,_,_,_,_,_,_,vendor=C_Item.GetItemInfo(link or id)
   tip:AddDoubleLine('Forever Market',n and ('Each   /   Stack of '..n) or 'Per item',.4,1,.75,.85,.85,.85)
   local function line(label,each)
@@ -194,6 +200,16 @@ local function itemValues(tip,id,link,n,bound,k,variant)
     tip:AddDoubleLine('After AH cut',money(ForeverMarketSaleNet(post))..(n and ('   /   '..money(ForeverMarketSaleNet(post*n))) or ''))
     tip:AddLine(source..'  |  '..math.floor((time()-at)/60)..' min ago',.7,.8,.8)
   else tip:AddLine(bound and 'Bound' or 'No auction price recorded for this item. Scan at the auction house.',.75,.75,.75,true) end
+  if variant and k and M.gearEvidence then
+    local g=gear
+    if g and (g.exact or g.other) then
+      if g.exact then
+        line('Same suffix / median ask',g.exact)
+        tip:AddLine(('%d observed days / %d listings last observed %s'):format(g.days,g.last.rows,date('%b %d',g.last.at)),.76,.72,.62,true)
+      else tip:AddLine('No recent ask for this suffix and item level.',.76,.72,.62,true) end
+      if g.other then tip:AddLine(('Other suffixes, middle range: %s to %s over %d days'):format(money(g.low),money(g.high),g.otherDays),.82,.78,.68,true) end
+    end
+  end
   if vendor then line('Vendor',vendor) end
   if (M.materials()[id] or 0)>0 then tip:AddLine('Reserved for crafting',1,.8,.2) end
   if M.valueLines then M.valueLines(tip,id,link) end

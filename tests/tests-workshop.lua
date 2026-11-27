@@ -3,9 +3,17 @@ local frames,buttons,tabs={}, {}, {}
 local clock,who,wallet=100,'smith',100000
 local bags,names,bound,owned={}, {}, {}, {}
 local function frame(kind,parent)
-  local f={shown=true,parent=parent,scripts={}}
+  local f={shown=true,parent=parent,kind=kind,scripts={}}
   local function noop() end
   for _,k in ipairs({'EnableMouseWheel','SetVerticalScroll','ClearAllPoints','SetPoint','SetSize','SetHeight','SetWidth','SetJustifyH','SetWordWrap','SetAutoFocus','SetFrameLevel','EnableMouse','SetHighlightTexture','SetScrollChild','ClearFocus','SetTextColor','SetBackdrop','SetBackdropColor','SetBackdropBorderColor','SetTexture','SetColorTexture','SetAtlas','SetFrameStrata'}) do f[k]=noop end
+  f.SetSize=function(self,w,h)self.width,self.height=w,h end
+  f.ClearAllPoints=function(self)self.anchor=nil end
+  f.SetPoint=function(self,anchor,a,b,c,d)
+    if self.anchor then return end
+    self.anchor=anchor
+    if type(a)=='number' then self.x,self.y=a,-b
+    elseif type(c)=='number' then self.x,self.y=c,-d end
+  end
   f.SetText=function(self,x)self.text=tostring(x)end
   f.GetText=function(self)return self.text end
   f.SetScript=function(self,k,fn)self.scripts[k]=fn end
@@ -467,4 +475,21 @@ do
   ForeverMarketActivity={events={{name=e.name,kind='proceeds_collected',region=1,realm=GetRealmName(),faction='Horde',character=UnitName('player'),at=time(),quantity=2,invoiceType='seller',amount=194,deposit=4,fee=10}}}
   local evidence=M.marketOutcomes(e.name);assert(evidence.gross==200 and evidence.paidUnits==2 and evidence.receipts==1)
   print('PASS: posting style evidence and paid unit price from gross invoice, excluding returned deposit')
+end
+
+-- Compare clickable controls anchored directly to the AH content panel.
+for _,name in ipairs({'Market Buy','Market Sell','Craft'}) do
+  local panel=assert(tabs[name],name)
+  local boxes={}
+  for _,w in ipairs(frames) do
+    if w.parent==panel and w.shown and w.width and w.x and (w.kind=='Button' or w.kind=='EditBox') and (w.anchor=='TOPLEFT' or w.anchor=='TOPRIGHT') then
+      local x=w.anchor=='TOPLEFT' and w.x or 795+w.x-w.width
+      for _,b in ipairs(boxes) do
+        assert(x>=b.x+b.w or b.x>=x+w.width or w.y>=b.y+b.h or b.y>=w.y+w.height,
+          name..' overlapping controls '..tostring(w.text)..' / '..tostring(b.name))
+      end
+      boxes[#boxes+1]={x=x,y=w.y,w=w.width,h=w.height,name=w.text}
+    end
+  end
+  assert(#boxes>=2,name..' controls missing')
 end

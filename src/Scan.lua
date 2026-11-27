@@ -17,6 +17,7 @@ local function create()
   if panel then return end
   panel=CreateFrame('Frame',nil,AuctionHouseFrame)
   panel:SetPoint('TOPLEFT',18,-65);panel:SetPoint('BOTTOMRIGHT',-25,45);panel:Hide()
+  if ForeverMarketPanelArt then ForeverMarketPanelArt(panel) end
   status=panel:CreateFontString(nil,'OVERLAY','GameFontHighlight')
   status:SetPoint('TOPLEFT',4,-42);status:SetPoint('RIGHT',-8,0);status:SetJustifyH('LEFT')
   status:SetText('Scan current listings to build local market history.')
@@ -25,6 +26,8 @@ local function create()
     b:SetPoint('TOPLEFT',x,0);b:SetText(text);b:SetScript('OnClick',fn)
   end
   button('Scan market',4,begin)
+  button('Market home',262,function()if ForeverMarketTools and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Home') end end)
+  button('Results',390,function()if ForeverMarketTools and ForeverMarketTools.openTools then ForeverMarketTools.openTools('Results') end end)
   button('Stop',132,function() finish('Scan stopped.') end)
   panel:SetScript('OnHide',function() if query then finish('Scan stopped.') end end)
   panel:SetScript('OnUpdate',function()
@@ -32,8 +35,8 @@ local function create()
     if step=='snapshot' then
       local data,state
       if ForeverMarketSnapshot then data,state=ForeverMarketSnapshot() end
-      if data then finish(('Snapshot ready · %d auction rows · %ds old'):format(data.rows,GetTime()-data.at));return end
-      if state=='pending' or state=='throttled' and GetTime()-last<20 then status:SetText('Receiving market snapshot…');return end
+      if data then finish(('Snapshot ready Â· %d auction rows Â· %ds old'):format(data.rows,GetTime()-data.at));return end
+      if state=='pending' or state=='throttled' and GetTime()-last<20 then status:SetText('Receiving market snapshotâ€¦');return end
       step='start';last=GetTime()
     end
     if GetTime()-last>20 then finish('Auction house timed out. Click Scan market to retry.');return end
@@ -58,7 +61,7 @@ f:SetScript('OnEvent',function(_,ev)
   local rows=api.GetBrowseResults()
   if not api.HasFullBrowseResults() then
     if #rows>count or count==0 and step==nil then
-      count=#rows;step='more';last=GetTime();status:SetText(('Scanning Â· %d listings found'):format(count))
+      count=#rows;step='more';last=GetTime();status:SetText(('Scanning ÂÂ· %d listings found'):format(count))
     end
     return
   end
@@ -72,5 +75,5 @@ f:SetScript('OnEvent',function(_,ev)
   end
   local n=0
   for k,r in pairs(combined) do ForeverMarketObserve(k,r.price,r.n);n=n+1 end
-  finish(('Scan complete Â· %d item prices saved.'):format(n))
+  finish(('Scan complete ÂÂ· %d item prices saved.'):format(n))
 end)

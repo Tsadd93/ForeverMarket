@@ -86,15 +86,24 @@ ForeverMarketActivity.events={{kind='proceeds_collected',invoiceType='seller',na
  realm='Realm 6926',faction='Horde',character='Rogue',amount=22,fee=1,deposit=3,quantity=2,at=now}}
 assert(M.historySeries(10,7)[7].sale==10)
 date=os.date
-local function widget()
- local w={shown=true,text=''}
+local surfaces={}
+local function widget(kind,_,parent)
+ local w={shown=true,text='',kind=kind,parent=parent}
+ surfaces[#surfaces+1]=w
+ function w:SetPoint(_,x,y)if type(x)=='number' then self.x=x;self.y=-y end end
+ function w:SetSize(width,height)self.width=width;self.height=height end
+ function w:SetWidth(width)self.width=width end
+ function w:SetHeight(height)self.height=height end
+ function w:SetScale(scale)self.scale=scale end
+ function w:SetShown(v)self.shown=v end
  function w:SetText(t)self.text=t end
  function w:GetText()return self.text end
  function w:Show()self.shown=true end
  function w:Hide()self.shown=false end
  function w:IsShown()return self.shown end
  function w:SetScript(k,v)self[k]=v end
- w.CreateTexture=widget;w.CreateFontString=widget
+ function w:CreateTexture()return widget('Texture',nil,self)end
+ function w:CreateFontString()return widget('Font',nil,self)end
  return setmetatable(w,{__index=function(_,k)
    if k=='TitleText' then return nil end
    return function()end
@@ -150,3 +159,41 @@ print('PASS: shopping filter migration, exact targets, posting floors, caps, per
 dofile('src/ToolsWindow.lua')
 for _,tab in ipairs({'Basket','Mail & bank','Supply plan','History','Farming','Import'}) do M.openTools(tab,10) end
 print('PASS: standalone window renders all six tabs including chart and paid invoices')
+
+fund.flips={{at=now-3600,n=4,sold=2,cost=100,net=80,lost=3,expected=40,name='Ore',firstPaid=now-1800},
+ {at=now-8*86400,n=1,sold=0,cost=70,net=0,name='Cloth'},
+ {at=now-7200,n=1,sold=1,cost=22,net=30,invest=true,name='Sash'}}
+local r=M.tradeResults(7,false)
+assert(r.spent==100 and r.open==50 and r.profit==27 and r.forecast==20 and r.timed==1 and r.delay==1800)
+assert(M.tradeResults(30,false).spent==170 and M.tradeResults(7,true).profit==8 and not M.tradeResults(7,true).delay)
+M.scope=function()return 'Realm 6926|Horde' end
+C_Item.GetItemInfoInstant=function()return 77,nil,nil,'INVTYPE_WAIST' end
+local k={itemID=77,itemLevel=18,itemSuffix=9}
+local rows={{100,9},{120,9},{1000,9},{60,3}}
+C_AuctionHouse.GetItemSearchResultInfo=function(_,i)local row=rows[i];return {itemKey={itemID=77,itemLevel=18,itemSuffix=row[2]},itemLink='item:77',quantity=1,buyoutAmount=row[1]} end
+M.recordGearBook(k,#rows)
+local g=M.gearEvidence(k,'item:77');assert(g.exact==120 and g.other==60 and g.last.rows==3 and g.days==1)
+now=now+86400;rows={{140,9},{80,3}};M.recordGearBook(k,#rows);g=M.gearEvidence(k,'item:77')
+assert(g.exact==130 and g.days==2 and g.low==60 and g.high==80 and g.otherDays==2)
+ForeverMarketPostingPreview=function()return {ready=0,hold=0,checking=0,gross=0,rows={}} end
+for _,resolution in ipairs({{1920,1080},{3840,2160}}) do
+ UIParent={GetWidth=function()return resolution[1]/2.5 end,GetHeight=function()return resolution[2]/2.5 end}
+ for _,tab in ipairs({'Home','Results','Preview','Basket','History','Import','Supply plan','Mail & bank','Farming'}) do
+  M.openTools(tab,10)
+  local panel;for _,w in ipairs(surfaces) do if rawget(w,'width')==695 then panel=w;break end end
+  assert(panel and panel.width*panel.scale<=UIParent:GetWidth() and panel.height*panel.scale<=UIParent:GetHeight())
+  local rects={}
+  for _,w in ipairs(surfaces) do
+   if w.parent==panel and w.shown and rawget(w,'x') and rawget(w,'width') and
+     (w.kind=='Button' or w.kind=='Font' and w.text~='') then
+    local x,y,width,height=w.x,w.y,w.width,rawget(w,'height') or 16
+    assert(x>=0 and y>=0 and x+width<=695 and y+height<=398,tab..' bounds: '..w.text)
+    for _,b in ipairs(rects) do
+     assert(x>=b[1]+b[3] or b[1]>=x+width or y>=b[2]+b[4] or b[2]>=y+height,tab..' overlap: '..w.text..' / '..b[5])
+    end
+    rects[#rects+1]={x,y,width,height,w.text}
+   end
+  end
+ end
+end
+print('PASS: results cohorts, suffix evidence, nine Tools layouts at two simulated display sizes')
