@@ -179,7 +179,7 @@ local function postingLimit(s,unitPrice,recheck)
   if GetMoney()<s.deposit then return 'Need deposit' end
   local gross=qty*unitPrice
   local net=ForeverMarketSaleNet(gross)
-  if net-ForeverMarketDepositLoss(qty)<=qty*s.vendor then return 'Vendor pays better or equal',true end
+  if net-ForeverMarketDepositLoss(qty)<=qty*s.vendor then return 'Vendor pays better or equal',true,'vendor' end
   if ForeverMarketFundHoldPrice then
     local minimum=ForeverMarketFundHoldPrice((not s.commodity and ForeverMarketVariant(s.k,s.link)) or s.k.itemID,qty,s.deposit)
     if ForeverMarketTools and ForeverMarketTools.rule and ForeverMarketTools.rule(s.k.itemID)=='Margin' then
@@ -204,11 +204,15 @@ local function paint()
       q = historicalQuote(s, true)
       quotes[s.key] = q
     end
+    local decision
     s.holdReason,s.canOverride = nil,false
     if fresh(q) and price(q,s) then
       local ask = price(q,s)
-      s.holdReason,s.canOverride = postingLimit(s, ask)
+      s.holdReason,s.canOverride,decision = postingLimit(s, ask)
 
+    end
+    if ForeverMarketVendorDecision and (q or protected[s.k.itemID]) then
+      ForeverMarketVendorDecision(s,q,decision=='vendor' and not protected[s.k.itemID] and quantity(s)==s.count)
     end
     local group = waiting
     if protected[s.k.itemID] then

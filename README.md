@@ -141,3 +141,5 @@ Click Scan market for a fresh pass. When the realm snapshot is on cooldown, the 
 Type `/fm` or `/fm dash` anywhere to open the full dashboard. Overview balances drill down into their records. Sales & profit, Item history, Watchlist and Research offer 7-, 14- and 30-day views. Forward-test totals are labeled lifetime. The Tools section opens trading workflows; Settings includes fund allocation, profit target, fees, stock and optional live sync. The auction house Analytics tab offers browsing and item lookup only. `/fm analytics` also opens reports away from the auctioneer.
 
 Desktop 0.9.0 includes the latest matching simulation summary with the existing ranked research feed; reload WoW after sync. Modeled profits are distinct from collected gold. Local reports work independently. Auction-house closure schedules a batched export. `/fm export` explicitly requests one; logout or reload saves the latest data.
+
+Market Sell marks a full stack red with **SELL** in the native bags when the vendor pays at least the estimated auction return. Use **Clear vendor marks** beside an open bag to dismiss the current recommendations. A new price check can flag a stack again.

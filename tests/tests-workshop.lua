@@ -208,6 +208,12 @@ loadPart('SellTab');dispatch('AUCTION_HOUSE_SHOW')
 M.queue('s1',1)
 tabs['Market Sell'].selectTab()
 assert(seenRows[1].slot.k.itemID==out and seenRows[2].detail.text=='Reserved for crafting')
+local vendorFlags={}
+ForeverMarketVendorDecision=function(s,q,recommend)vendorFlags[s.k.itemID]=recommend end
+local oldAllowance=M.settings().lostDepositPerUnit
+M.settings().lostDepositPerUnit=50000;dispatch('BAG_UPDATE_DELAYED')
+assert(vendorFlags[out] and not vendorFlags[mat])
+M.settings().lostDepositPerUnit=oldAllowance;dispatch('BAG_UPDATE_DELAYED');assert(not vendorFlags[out])
 local keep=seenRows[1].keep
 keep.scripts.OnMouseDown(keep);keep.scripts.OnClick(keep)
 assert(seenRows[1].detail.text=='Reserved for crafting' and seenRows[2].detail.text=='Protected')

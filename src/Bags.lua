@@ -2,6 +2,35 @@ local GetRealmName=ForeverMarketVenueRealm or function() return _G.GetRealmName 
 -- Native bag decoration; never sells, moves or locks an item.
 local enabled=true
 local badges=setmetatable({},{__mode='k'})
+local function marks(create)
+  if not ForeverMarketDB or not UnitGUID then return end
+  local character=UnitGUID('player')
+  if not character then return end
+  local all=ForeverMarketDB.vendorMarks
+  if create then
+    all=all or {};ForeverMarketDB.vendorMarks=all;all[character]=all[character] or {}
+  end
+  return all and all[character]
+end
+local function stackKey(loc,bag,slot)
+  local guid=loc and C_Item and C_Item.GetItemGUID and C_Item.GetItemGUID(loc)
+  if not (issecretvalue and issecretvalue(guid)) and guid then return guid end
+  return bag..'/'..slot
+end
+function ForeverMarketVendorDecision(s,q,recommend)
+  local records=marks(recommend)
+  if not records then return end
+  s.vendorKey=s.vendorKey or stackKey(s.loc,s.bag,s.slot)
+  local old=records[s.vendorKey]
+  if not recommend then records[s.vendorKey]=nil;return end
+  local at=q.observed or 0
+  if not old or old.link~=s.link or old.count~=s.count or old.at~=at then
+    records[s.vendorKey]={link=s.link,count=s.count,at=at}
+  end
+end
+local function clearMarks()
+  for _,r in pairs(marks(false) or {}) do r.dismissed=true end
+end
 local function money(n) return GetCoinTextureString and GetCoinTextureString(math.floor(n)) or tostring(math.floor(n))..'c' end
 function ForeverMarketBagDecision(x)
   if x.bound or x.quest or x.class~=7 or not x.vendor then return nil end
@@ -24,6 +53,17 @@ local function evaluate(bag,slot)
   if not C_Container then return end
   local info=C_Container.GetContainerItemInfo(bag,slot)
   if not info or not info.itemID then return end
+  local records=marks(false)
+  if records and next(records) then
+    local loc=ItemLocation and ItemLocation:CreateFromBagAndSlot(bag,slot)
+    local r=records[stackKey(loc,bag,slot)]
+    local protected=ForeverMarketDB.__sellBlacklist
+    protected=protected and protected[UnitGUID('player')]
+    if r and not r.dismissed and r.link==info.hyperlink and r.count==(info.stackCount or 1) and not (protected and protected[info.itemID]) then
+      return 'vendor',nil,'Market Sell found that the vendor pays as much as or more than the auction.'
+    end
+  end
+  if not enabled then return end
   local get=C_Item and C_Item.GetItemInfo or GetItemInfo
   local name,_,_,_,_,_,_,_,_,_,vendor,class=get(info.itemID)
   if not name or class~=7 then return end
@@ -46,7 +86,7 @@ local function evaluate(bag,slot)
 end
 local function decorate(button)
   local bag,slot=location(button)
-  local state=bag and enabled and evaluate(bag,slot)
+  local state=bag and evaluate(bag,slot)
   local badge=badges[button]
   if state and not badge and not InCombatLockdown() then
     badge={lines={}}
@@ -56,26 +96,70 @@ local function decorate(button)
       else t:SetWidth(2);t:SetPoint('TOP'..point,button,'TOP'..point,0,0);t:SetPoint('BOTTOM'..point,button,'BOTTOM'..point,0,0) end
       badge.lines[i]=t
     end
+    badge.tint=button:CreateTexture(nil,'OVERLAY',nil,5);badge.tint:SetAllPoints(button);badge.tint:SetColorTexture(.90,.02,.02,.38)
     badge.label=button:CreateFontString(nil,'OVERLAY');badge.label:SetFont('Fonts\\ARIALN.TTF',11,'OUTLINE');badge.label:SetPoint('TOPLEFT',2,-2)
     badges[button]=badge
   end
   if not badge then return end
+  badge.tint:SetShown(state=='vendor')
   for _,t in ipairs(badge.lines) do
     t:SetShown(state~=nil and state~=false)
-    if state=='ah' then t:SetColorTexture(.20,1,.70,.95) else t:SetColorTexture(1,.72,.20,.8) end
+    if state=='vendor' then t:SetColorTexture(1,.09,.08,1) elseif state=='ah' then t:SetColorTexture(.20,1,.70,.95) else t:SetColorTexture(1,.72,.20,.8) end
   end
-  badge.label:SetText(state=='ah' and '|cff55ffb0AH|r' or state=='check' and '|cffffbd33?|r' or '')
+  badge.label:SetText(state=='vendor' and '|cffff5555SELL|r' or state=='ah' and '|cff55ffb0AH|r' or state=='check' and '|cffffbd33?|r' or '')
 end
 local function walk(frame,depth)
   if not frame or not frame:IsShown() or depth>6 then return end
-  if frame.IsObjectType and frame:IsObjectType('Button') then decorate(frame) end
+  if frame.IsObjectType and frame:IsObjectType('Button') and not frame.fmClearMarks then decorate(frame) end
   if frame.GetChildren then for _,child in ipairs({frame:GetChildren()}) do walk(child,depth+1) end end
 end
+local clearButton
+local inventoryChanged=true
+local function prune(records)
+  local present={}
+  for bag=0,(NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4) do
+    for slot=1,C_Container.GetContainerNumSlots(bag) do
+      local item=C_Container.GetContainerItemInfo(bag,slot)
+      if item then
+        local loc=ItemLocation and ItemLocation:CreateFromBagAndSlot(bag,slot)
+        local key=stackKey(loc,bag,slot);local r=records[key]
+        if r and r.link==item.hyperlink and r.count==(item.stackCount or 1) then present[key]=true end
+      end
+    end
+  end
+  for key in pairs(records) do if not present[key] then records[key]=nil end end
+end
+local function refreshBags()
+  local anchor
+  for i=1,13 do
+    local bag=_G['ContainerFrame'..i]
+    if bag and bag:IsShown() then anchor=anchor or bag;walk(bag,0) end
+  end
+  if ContainerFrameCombinedBags and ContainerFrameCombinedBags:IsShown() then anchor=ContainerFrameCombinedBags;walk(anchor,0) end
+  local records=marks(false)
+  if anchor and inventoryChanged and records and next(records) and not InCombatLockdown() then
+    prune(records);inventoryChanged=false
+  end
+  local marked=false
+  if anchor then for _,r in pairs(records or {}) do if not r.dismissed then marked=true;break end end end
+  if not anchor or not marked then if clearButton then clearButton:Hide() end;return end
+  if InCombatLockdown() then return end
+  if not clearButton then
+    clearButton=CreateFrame('Button',nil,UIParent,'UIPanelButtonTemplate')
+    clearButton.fmClearMarks=true;clearButton:SetSize(130,23);clearButton:SetText('Clear vendor marks')
+    clearButton:SetScript('OnClick',function()clearMarks();refreshBags()end)
+  end
+  if clearButton:GetParent()~=anchor then clearButton:SetParent(anchor) end
+  clearButton:SetFrameLevel(anchor:GetFrameLevel()+5);clearButton:ClearAllPoints()
+  if (anchor:GetLeft() or 0)>135 then clearButton:SetPoint('TOPRIGHT',anchor,'TOPLEFT',-2,0)
+  else clearButton:SetPoint('TOPLEFT',anchor,'TOPLEFT',4,-2) end
+  clearButton:Show()
+end
 local f=CreateFrame('Frame');local elapsed=0
+f:RegisterEvent('BAG_UPDATE_DELAYED');f:SetScript('OnEvent',function()inventoryChanged=true end)
 f:SetScript('OnUpdate',function(_,dt)
   elapsed=elapsed+dt;if elapsed<.75 or not C_Container then return end;elapsed=0
-  for i=1,13 do walk(_G['ContainerFrame'..i],0) end
-  walk(ContainerFrameCombinedBags,0)
+  refreshBags()
 end)
 function ForeverMarketBagToggle(on)
   enabled=on
