@@ -68,6 +68,36 @@ function ForeverMarketRepairHistory()
   end
   return #aliases
 end
+-- Freeze a displayed investment's exit for three days. Only later full bulk
+-- observations can resolve it. Missing coverage stays separate from misses.
+local function closePaperWindow(p,now)
+  if p.at and now>p.at+3*86400 then
+    if not p.hit then
+      if p.d1 and p.d2 and p.d3 then p.misses=p.misses+1 else p.gaps=p.gaps+1 end
+    end
+    p.at=nil
+  end
+end
+function ForeverMarketPaperDip(id,exit)
+  local r=ForeverMarketHistory()[tostring(id)]
+  if not r then return end
+  local p=r.paper or {hits=0,misses=0,gaps=0};r.paper=p
+  local now=time()
+  closePaperWindow(p,now)
+  if not p.at then p.at=now;p.exit=exit;p.hit=nil;p.d1=nil;p.d2=nil;p.d3=nil end
+  return ('Forward quotes: %d hit / %d missed / %d incomplete. '):format(p.hits,p.misses,p.gaps)
+end
+function ForeverMarketPaperResults()
+  local results={}
+  for key,r in pairs(ForeverMarketHistory()) do
+    if r.paper then
+      closePaperWindow(r.paper,time())
+      results[#results+1]={id=tonumber(key),paper=r.paper}
+    end
+  end
+  table.sort(results,function(a,b)return a.id<b.id end)
+  return results
+end
 function ForeverMarketObserve(key,price,quantity,bulk)
   if not price or price<=0 then return end
   local db=ForeverMarketHistory()
@@ -85,6 +115,13 @@ function ForeverMarketObserve(key,price,quantity,bulk)
   ForeverMarketDB[market]=ForeverMarketDB[market] or {}
   ForeverMarketDB[market][key]={price=price,quantity=quantity,at=now}
   if ForeverMarketTools and ForeverMarketTools.checkAlert then ForeverMarketTools.checkAlert(key,price) end
+  local trial=r.paper
+  if trial then closePaperWindow(trial,now) end
+  if bulk and trial and trial.at and not trial.hit and now>trial.at and now<=trial.at+3*86400 then
+    local window=math.ceil((now-trial.at)/86400)
+    trial['d'..window]=true
+    if bulk>=trial.exit then trial.hit=true;trial.hits=trial.hits+1 end
+  end
   if bulk then r.bulk={price=bulk,at=now};r.floors=r.floors or {};r.floors[day]=math.min(bulk,r.floors[day] or bulk) end
 end
 

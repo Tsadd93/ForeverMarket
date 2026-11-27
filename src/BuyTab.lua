@@ -308,6 +308,12 @@ local function rankCandidates(snapshot,grouped,cash)
     end
     leads=picks
   end
+  if ForeverMarketTools and ForeverMarketTools.salesWeight then
+    for _,lead in ipairs(leads) do
+      local name=C_Item.GetItemNameByID(lead.id)
+      if name then lead.potential=lead.potential*ForeverMarketTools.salesWeight(name) end
+    end
+  end
   table.sort(leads,function(a,b)
     if (a.potential>0 or staples[a.id]==true)~=(b.potential>0 or staples[b.id]==true) then return a.potential>0 or staples[a.id]==true end
     if a.potential~=b.potential then return a.potential>b.potential end
@@ -487,14 +493,14 @@ end
 local function plan()
   local choices={}
   for _,v in pairs(verified) do if GetTime()-v.at<60 then choices[#choices+1]=v end end
-  local scores={}
+  local scores,weights={},{}
   for _,v in ipairs(choices) do
     local weight=1
     if ForeverMarketTools and ForeverMarketTools.salesWeight then
       local name=C_Item.GetItemNameByID(v.itemID or v.id)
       if name then weight=ForeverMarketTools.salesWeight(name) end
     end
-    scores[v]=weight*v.edge/v.low
+    weights[v]=weight; scores[v]=weight*v.edge/v.low
   end
   table.sort(choices,function(a,b)if scores[a]==scores[b] then return a.id<b.id end return scores[a]>scores[b] end)
   local start=available()
@@ -508,7 +514,7 @@ local function plan()
       local profit=expectedNet-n*v.low
       local group=ForeverMarketTools and ForeverMarketTools.group and ForeverMarketTools.group(v.itemID or v.id)
       if n>0 and (not group or group.cap==0 or not group.cap or v.low<=group.cap) and profit>0 and profit*10000>=n*v.low*math.max(ForeverMarketMarginBP(),group and group.margin*100 or 0) and expectedNet>n*v.vendor and v.exit>=ForeverMarketFundHoldPrice(v.variant or v.id,n,dep) then
-        list[#list+1]={v=v,n=n,dep=dep};cash=cash-n*v.low-dep;gain=gain+profit
+        list[#list+1]={v=v,n=n,dep=dep};cash=cash-n*v.low-dep;gain=gain+profit*weights[v]
       end
     end
     return list,gain
@@ -556,7 +562,7 @@ local function buy(row)
     clearQuote()
     local f=fund();f.itemOrders=f.itemOrders or {}
     if f.itemOrders[v.auctionID] then return end
-    f.itemOrders[v.auctionID]={id=v.itemID,holding=v.variant,lead=v.id,name=v.name,n=1,total=v.low,dep=p.dep,auctionID=v.auctionID,at=time()}
+    f.itemOrders[v.auctionID]={id=v.itemID,holding=v.variant,lead=v.id,name=v.name,n=1,forecast=netResale(v,1)-ForeverMarketDepositLoss(1)-v.low,total=v.low,dep=p.dep,auctionID=v.auctionID,at=time()}
     local ok,err=pcall(api.PlaceBid,v.auctionID,v.low)
     if not ok then f.itemOrders[v.auctionID]=nil;note(tostring(err))
     else retire(v.id,'Awaiting confirmation') end
@@ -569,7 +575,7 @@ local function buy(row)
     clearQuote();retire(p.v.id,'Offer changed');note('Offer changed. Shopping list updated.');return
   end
   if row.buyTotal~=quote.total then note('Review the updated buy total and click again.');return end
-  fund().pending={target=p.v.model and p.v.exit,id=quote.id,n=quote.n,total=quote.total,dep=p.dep,at=time()}
+  fund().pending={forecast=netResale(p.v,p.n)-ForeverMarketDepositLoss(p.n)-quote.total,target=p.v.model and p.v.exit,id=quote.id,n=quote.n,total=quote.total,dep=p.dep,at=time()}
   quote=nil
   local ok,err=pcall(api.ConfirmCommoditiesPurchase,p.v.id,p.n)
   if not ok then fund().pending=nil;note(tostring(err)) end
@@ -631,7 +637,17 @@ local function render()
     local itemName=p and C_Item.GetItemNameByID(p.v.itemID or p.v.id)
     row.marketId=p and (p.v.itemID or p.v.id)
     row.priceReason=p and not p.inactive and ("Exit per item "..ForeverMarketCoins(p.v.exit).." / deposit reserved "..ForeverMarketCoins(p.dep or 0)) or nil
-    if p and p.v.model and not p.inactive then row.priceReason=("Investment / %d of %d prior dips recovered within 3 days. "):format(p.v.model.wins,p.v.model.trials)..row.priceReason end
+    if row.priceReason and itemName and ForeverMarketTools and ForeverMarketTools.marketOutcomes then
+      local outcomes=ForeverMarketTools.marketOutcomes(itemName)
+      if outcomes then
+        row.priceReason=row.priceReason..(' / 14 days: %d sale notices, %d expired'):format(outcomes.sales,outcomes.returns)
+        if outcomes.linked>0 then row.priceReason=row.priceReason..(' / mean time to sale %.1fh'):format(outcomes.hours/outcomes.linked) end
+      end
+    end
+    if p and p.v.model and not p.inactive then
+      local paper=ForeverMarketPaperDip and ForeverMarketPaperDip(p.v.id,p.v.exit)
+      row.priceReason=("Historical replay: %d/%d dips recovered. "):format(p.v.model.wins,p.v.model.trials)..(paper or '')..row.priceReason
+    end
     row.saleText=itemName and ForeverMarketTools and ForeverMarketTools.saleLabel and ForeverMarketTools.saleLabel(itemName)
     row.qty:SetText(p and p.n or '')
     row.cost:SetText(row.buyTotal and ForeverMarketCoins(row.buyTotal) or '')
@@ -982,6 +998,7 @@ function ForeverMarketFundActivity(kind,e)
     local holding=p.holding or p.id
     local h=f.held[holding] or {n=0,reserve=0};f.held[holding]=h
     if p.target then h.target=math.max(h.target or 0,p.target);h.invested=(h.invested or 0)+p.n end
+    if ForeverMarketTools and ForeverMarketTools.beginFlip then ForeverMarketTools.beginFlip(f,h,p,e) end
     h.itemID=p.id;h.lead=p.lead or p.id;h.inMail=(h.inMail or 0)+p.n
     h.cost=(h.cost or 0)+e.total;h.n=h.n+p.n;h.reserve=h.reserve+p.dep;retire(p.lead or p.id,'Purchased')
   elseif kind=='purchased_item_received' and e.itemId and e.quantity then
@@ -999,26 +1016,41 @@ function ForeverMarketFundActivity(kind,e)
       local investmentQty=math.min(h.invested or 0,t.tracked);local investmentTarget=h.target
       h.invested=math.max(0,(h.invested or 0)-t.tracked);if h.invested==0 then h.target=nil end
       h.cost=math.ceil((h.cost or 0)*(h.n-t.tracked)/h.n);f.cash=f.cash-math.ceil(dep*t.tracked/t.n);h.reserve=math.floor(h.reserve*(h.n-t.tracked)/h.n);h.n=h.n-t.tracked
-      f.lots[#f.lots+1]={name=e.name,n=t.tracked,invested=investmentQty,target=investmentTarget,posted=t.n,basis=basis,holding=t.id,itemID=t.itemID,deposit=math.ceil(dep*t.tracked/t.n),price=t.price,auctionId=e.auctionId}
+      f.lots[#f.lots+1]={name=e.name,n=t.tracked,invested=investmentQty,target=investmentTarget,posted=t.n,unpaid=t.n,basis=basis,holding=t.id,itemID=t.itemID,deposit=math.ceil(dep*t.tracked/t.n),price=t.price,auctionId=e.auctionId}
+      if ForeverMarketTools and ForeverMarketTools.listFlip then ForeverMarketTools.listFlip(h,f.lots[#f.lots],h.n+t.tracked) end
     end
   elseif kind=='proceeds_collected' and e.invoiceType=='seller' and e.quantity and e.quantity>0 and e.amount and e.fee and e.deposit then
     local gross=e.amount+e.fee-e.deposit
     local remain=e.quantity
+    local credit=0
     for _,lot in ipairs(f.lots) do
       if lot.sold and lot.name==e.name and lot.price*e.quantity==gross and remain>0 then
-        local n=math.min(remain,lot.n)
-        if lot.basis and ForeverMarketTools and ForeverMarketTools.settleLot then
+        local units=math.min(remain,lot.unpaid or lot.n)
+        local n=math.min(units,lot.n)
+        local offset=e.quantity-remain
+        credit=credit+math.floor(e.amount*(offset+n)/e.quantity)-math.floor(e.amount*offset/e.quantity)
+        if n>0 and lot.basis and ForeverMarketTools and ForeverMarketTools.settleLot then
           local basis=math.floor(lot.basis*n/lot.n)
+          if ForeverMarketTools.payFlip then ForeverMarketTools.payFlip(lot,e,n,offset) end
           ForeverMarketTools.settleLot(lot,e,n,basis)
           lot.basis=lot.basis-basis
           lot.deposit=lot.deposit-math.floor(lot.deposit*n/lot.n)
         end
-        lot.n=lot.n-n;remain=remain-n
+        lot.unpaid=(lot.unpaid or lot.n)-units
+        lot.n=lot.n-n;remain=remain-units
       end
     end
-    f.cash=f.cash+math.floor(e.amount*(e.quantity-remain)/e.quantity)
+    f.cash=f.cash+credit
   elseif kind=='sale_notice' and e.auctionId then
-    for _,lot in ipairs(f.lots) do if lot.auctionId==e.auctionId then lot.sold=true end end
+    for _,lot in ipairs(f.lots) do
+      if lot.auctionId==e.auctionId then lot.sold=true;return end
+    end
+    -- The mailbox omits auction IDs. Include outside-fund sales in matching
+    -- so their units cannot be credited again to a later identical fund sale.
+    local sale=ForeverMarketTools and ForeverMarketTools.account and ForeverMarketTools.account().sales[e.auctionId]
+    if sale and sale.qty and sale.qty>0 and sale.amount and sale.name then
+      f.lots[#f.lots+1]={name=sale.name,n=0,unpaid=sale.qty,price=sale.amount/sale.qty,auctionId=e.auctionId,sold=true}
+    end
   end
 end
 function ForeverMarketFundCash() return fund().cash end

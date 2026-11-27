@@ -255,6 +255,13 @@ local function paint()
       row.detail:SetText(s.holdReason)
       if not row.override then row.price:SetText('Hold') end
     end
+    if s and ForeverMarketTools and ForeverMarketTools.expiryWarning then
+      local warning,loss=ForeverMarketTools.expiryWarning(C_Item.GetItemNameByID(s.k.itemID))
+      if warning then
+        row.name:SetText('|cffffb347!|r '..ForeverMarketRowIcon(s.k.itemID,s.link))
+        row.priceReason=(row.priceReason or '')..' / '..warning..' / '..loss..' / Review stack size and relist cost before posting again.'
+      end
+    end
     row.post:SetShown(s~=nil)
     row.needsCheck=s and (not fresh(q) or q.timedOut)
     row.post:SetText(row.needsCheck and 'Check' or row.override and (nativeFallback and 'Sell…' or 'Post held') or nativeFallback and 'Sell…' or 'Post')

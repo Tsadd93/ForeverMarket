@@ -202,6 +202,15 @@ local function attach()
       local ok,id=pcall(C_Item.GetItemID,location)
       local calc=commodity and api.CalculateCommodityDeposit or api.CalculateItemDeposit
       local depOK,dep=pcall(calc,commodity and id or location,duration,quantity)
+      if ForeverMarketFundPost and ok and id and quantity and quantity>0 and total and total>0 and depOK and dep then
+        local holding=commodity and id
+        if not commodity and api.GetItemKeyFromItem and C_Item.GetItemLink then
+          local keyOK,k=pcall(api.GetItemKeyFromItem,location)
+          local linkOK,link=pcall(C_Item.GetItemLink,location)
+          if keyOK and linkOK then holding=ForeverMarketVariant(k,link) end
+        end
+        if holding then ForeverMarketFundPost(holding,quantity,total/quantity,dep,id) end
+      end
       f.marketPost={deposit=depOK and dep or nil,itemId=ok and id or nil,quantity=quantity,total=total,bid=bid,duration=duration}
     end
     observe('PostCommodity',function(loc,duration,qty,price) posted(loc,duration,qty,qty*price,nil,true) end)

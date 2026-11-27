@@ -24,6 +24,12 @@ Use **Market Buy → Invest** to look for commodity price dips. The model requir
 
 Market Sell remembers quotes separately for each auction market. Right-click an item name to check it again, or click **Refresh** to recheck the list. Auctions shows active listings, gross sold value, last-seen sale mail, estimated pending proceeds when identifiable, and wallet-confirmed collections for the current character.
 
+**Manage auctions → Ledger → Fund flips** tracks confirmed Market Buy purchases from version 0.12.0 onward. Open a purchase to compare forecast and realized profit, remaining inventory cost, and wallet collections. Identical units are attributed in purchase order. Mail receipts lack auction IDs, so indistinguishable same-price sales use posting order among eligible sales. Outside-fund sales stay in the item ledger.
+
+Market Buy weighs recent sales, time to sale, expirations and older unresolved listings when prioritizing eligible offers. A gold exclamation mark in Market Sell flags an item that expired in the past 14 days. Hover for its return count and any confirmed fund deposits lost.
+
+**Ledger → Investment tests** shows whether later bulk quotes reached a displayed investment's original exit within three days. It counts hits, observed misses and incomplete windows separately. Actual proceeds appear under **Fund flips** when you collect the mail.
+
 ## Optional Windows dashboard
 
 [Download Forever Market Desktop for Windows x64](https://github.com/drixthegamer/ForeverMarket/releases/download/desktop-v0.8.0/ForeverMarket-Desktop-0.8.0-win-x64.exe) and double-click the EXE. It includes the addon and offline Microsoft runtime installers. On first launch, select your WoW Forever client folder if prompted.

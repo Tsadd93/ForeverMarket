@@ -370,3 +370,62 @@ ForeverMarketActivity={events={evt('collection_requested',690,1000),evt('collect
 M.restoreCollected();M.restoreCollected();assert(a.collected[day]==856)
 print('PASS: remaining listing quantities, bid settlement and idempotent wallet-history repair')
 
+
+-- Exercise real fund confirmation, posting, expiry, mixed stock and settlement.
+do
+  local id=98765
+  local f=ForeverMarketTradingFund()
+  f.pending={id=id,n=4,total=101,forecast=47,dep=4,at=time()}
+  ForeverMarketFundActivity('purchase',{itemId=id,name='Test Ore',quantity=4,total=101,at=time()})
+  local flip=f.flips[#f.flips]
+  assert(flip.cost==101 and flip.expected==47 and flip.sold==0)
+  local function post(n,price,deposit,auction)
+    ForeverMarketFundPost(id,n,price,deposit,id)
+    ForeverMarketFundActivity('posted',{itemId=id,name=flip.name,quantity=n,total=price*n,auctionId=auction})
+  end
+  post(2,40,4,801);assert(flip.listed==2)
+  M.recordMarket('auction_expired',{itemId=id,name=flip.name,quantity=2})
+  assert(flip.lost==4 and flip.listed==0 and f.held[id].n==4)
+  post(5,40,10,802);assert(flip.listed==4)
+  ForeverMarketFundActivity('sale_notice',{auctionId=802})
+  local function collect(n)
+    ForeverMarketFundActivity('proceeds_collected',{name=flip.name,invoiceType='seller',quantity=n,amount=40*n,fee=2*n,deposit=2*n,at=time()})
+  end
+  collect(2);assert(flip.sold==2 and flip.net==76 and flip.listed==2)
+  collect(3);assert(flip.sold==4 and flip.net==152 and flip.listed==0 and flip.net-flip.cost-flip.lost==47)
+  local cash=f.cash;collect(1);assert(f.cash==cash)
+  M.account().sales[803]={name=flip.name,qty=1,amount=40}
+  ForeverMarketFundActivity('sale_notice',{auctionId=803});collect(1);assert(f.cash==cash)
+  print('PASS: flip forecast, returned stock, lost deposit, partial payouts, mixed and outside-fund sales')
+end
+do
+  local now=time();local events={}
+  local function add(kind,name,id,t)
+    events[#events+1]={kind=kind,name=name,auctionId=id,at=now+t,realm=ForeverMarketVenueRealm(),faction='Horde'}
+  end
+  for i=1,5 do
+    add('posted','Fast',i,-72000);add('sale_notice','sold',i,-71970);add('sale_notice','sold',i,-71900)
+    add('posted','Open',10+i,-72000);add('auction_expired','Slow',nil,-60000)
+  end
+  ForeverMarketActivity={events=events}
+  assert(M.marketOutcomes('Fast').sales==5 and M.salesWeight('Fast')>1)
+  assert(M.salesWeight('Open')<1 and M.salesWeight('Slow')<1 and M.salesWeight('Unknown')==1)
+  assert(M.expiryWarning('Slow'):find('5x') and not M.expiryWarning('Fast'))
+  print('PASS: observed speed, open listings, duplicate notifications, expiry warnings and cold start')
+end
+do
+  local key='98765'
+  ForeverMarketObserve(key,50,10,50)
+  ForeverMarketPaperDip(98765,80)
+  ForeverMarketPaperDip(98765,60)
+  local paper=ForeverMarketHistory()[key].paper
+  assert(paper.exit==80 and paper.hits==0)
+  clock=clock+1;ForeverMarketObserve(key,70,20,70);assert(paper.hits==0)
+  clock=clock+1;ForeverMarketObserve(key,90,2,90);ForeverMarketObserve(key,95,2,95);assert(paper.hits==1)
+  clock=clock+4*86400;ForeverMarketPaperDip(98765,100)
+  clock=clock+4*86400;ForeverMarketPaperResults();assert(paper.gaps==1 and not paper.at)
+  ForeverMarketPaperDip(98765,100)
+  for i=1,3 do clock=clock+86400;ForeverMarketObserve(key,70,2,70) end
+  clock=clock+1;ForeverMarketPaperResults();assert(paper.misses==1 and paper.hits==1 and paper.gaps==1)
+  print('PASS: forward dip tests freeze targets and distinguish later hits, observed misses and missing days')
+end

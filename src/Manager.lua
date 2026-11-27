@@ -78,36 +78,109 @@ function M.saleLabel(name)
   local n,count=M.saleCount(name)
   return n..' sold across '..count..' collected sales in the last 7 calendar days'
 end
+-- Compare 14 days of listings in this market. A new listing gets time to sell
+-- before an unresolved outcome weighs against it.
 local turnover={}
-function M.salesWeight(name)
+function M.marketOutcomes(name)
   local events=ForeverMarketActivity and ForeverMarketActivity.events
-  if not events then return 1 end
-  local day=math.floor(time()/86400);local scope=M.scope()
-  if turnover.day~=day or turnover.scope~=scope or turnover.events~=events or turnover.index>#events then
-    turnover={day=day,scope=scope,events=events,index=0,byName={},seen={}}
+  if not events then return end
+  local now=time();local hour=math.floor(now/3600);local scope=M.scope()
+  if turnover.hour~=hour or turnover.scope~=scope or turnover.events~=events or turnover.index>#events then
+    turnover={hour=hour,scope=scope,events=events,index=0,byName={},posts={},seen={}}
   end
   for i=turnover.index+1,#events do
     local e=events[i]
-    if e.at>=(day-13)*86400 and e.name and (e.realm or '')..'|'..(e.faction or '')==scope then
-      local sold=e.kind=='sale_notice' and e.auctionId and not turnover.seen[e.auctionId]
-      if sold or e.kind=='auction_expired' then
-        local r=turnover.byName[e.name] or {sales=0,returns=0};turnover.byName[e.name]=r
-        if sold then turnover.seen[e.auctionId]=true;r.sales=r.sales+1 else r.returns=r.returns+1 end
+    if e.name and e.at and e.at>=now-14*86400 and (e.realm or '')..'|'..(e.faction or '')==scope then
+      local id=e.auctionId
+      local post=id and turnover.posts[id]
+      local key=post and post.name or e.name
+      if e.kind=='posted' or e.kind=='sale_notice' and id or e.kind=='auction_expired' then
+        local r=turnover.byName[key] or {sales=0,returns=0,mature=0,linked=0,hours=0}
+        turnover.byName[key]=r
+        if e.kind=='posted' and id and not post then
+          local mature=now-e.at>=12*3600
+          turnover.posts[id]={name=key,at=e.at,mature=mature}
+          if mature then r.mature=r.mature+1 end
+        elseif e.kind=='sale_notice' and not turnover.seen[id] then
+          turnover.seen[id]=true;r.sales=r.sales+1
+          if post and e.at>=post.at then
+            r.linked=r.linked+1;r.hours=r.hours+(e.at-post.at)/3600
+            if post.mature then r.mature=r.mature-1 end
+          end
+        elseif e.kind=='auction_expired' then r.returns=r.returns+1 end
       end
     end
   end
   turnover.index=#events
-  local r=turnover.byName[name]
+  return turnover.byName[name]
+end
+function M.salesWeight(name)
+  local r=M.marketOutcomes(name)
   if not r then return 1 end
-  return math.max(.5,math.min(1.5,2*(r.sales+2)/(r.sales+r.returns+4)))
+  -- An expired listing can also appear among the unresolved postings.
+  local reliability=(r.sales+2)/(r.sales+math.max(r.returns,r.mature)+4)
+  local speed=(12+r.linked*6)/(12+r.hours)
+  return math.max(.35,math.min(1.8,2*reliability*math.max(.65,math.min(1.3,speed))))
+end
+
+-- Attribute identical units FIFO within a fund holding. Keep unknown legacy
+-- stock separate and spread invoice rounding across units exactly once.
+local function moveShares(source,total,n,visit)
+  local known=0
+  for _,s in ipairs(source or {}) do known=known+s.n end
+  local left=n-math.min(n,total-known)
+  local offset=n-left
+  for _,s in ipairs(source or {}) do
+    if left<=0 then break end
+    local take=math.min(s.n,left)
+    if take>0 then visit(s.id,take,offset);s.n=s.n-take;left=left-take;offset=offset+take end
+  end
+end
+local function addShare(owner,id,n)
+  owner.shares=owner.shares or {}
+  for _,s in ipairs(owner.shares) do if s.id==id then s.n=s.n+n;return end end
+  owner.shares[#owner.shares+1]={id=id,n=n}
+end
+function M.beginFlip(f,h,p,e)
+  if p.forecast==nil then return end
+  f.flips=f.flips or {}
+  local id=#f.flips+1
+  f.flips[id]={name=e.name or nameOf(p.id),item=p.id,at=e.at or time(),n=p.n,cost=e.total,
+    expected=p.forecast,invest=p.target~=nil,sold=0,net=0,lost=0,listed=0}
+  addShare(h,id,p.n)
+end
+function M.listFlip(h,lot,previous)
+  moveShares(h.shares,previous,lot.n,function(id,n)
+    addShare(lot,id,n)
+    local r=ForeverMarketTradingFund().flips[id];r.listed=r.listed+n
+  end)
+end
+local function portion(total,offset,n,count)
+  return math.floor(total*(offset+n)/count)-math.floor(total*offset/count)
+end
+function M.payFlip(lot,e,n,offset)
+  moveShares(lot.shares,lot.n,n,function(id,take,start)
+    local r=ForeverMarketTradingFund().flips[id]
+    r.wallet=(r.wallet or 0)+portion(e.amount,offset+start,take,e.quantity)
+    r.net=r.net+portion(e.amount-e.deposit,offset+start,take,e.quantity)
+    r.listed=r.listed-take;r.sold=r.sold+take;r.lastPaid=e.at or time()
+  end)
+end
+local function returnFlip(h,lot,loss)
+  moveShares(lot.shares,lot.n,lot.n,function(id,take,start)
+    local r=ForeverMarketTradingFund().flips[id]
+    r.lost=r.lost+portion(loss,start,take,lot.n);r.listed=r.listed-take
+    addShare(h,id,take)
+  end)
 end
 local function restoreLot(lot,r,fee)
   local h=ForeverMarketTradingFund().held[lot.holding]
   if not h then return end
   if lot.target and (lot.invested or 0)>0 then h.target=math.max(h.target or 0,lot.target);h.invested=(h.invested or 0)+math.min(lot.n,lot.invested) end
   h.n=h.n+lot.n;h.cost=(h.cost or 0)+lot.basis
+  returnFlip(h,lot,lot.deposit+(fee or 0))
   r.loss=r.loss+lot.deposit+(fee or 0)
-  lot.n=0;lot.basis=0;lot.deposit=0
+  lot.n=0;lot.basis=0;lot.deposit=0;lot.unpaid=0
 end
 function M.recordMarket(kind,e)
   if kind=='cancel_confirmed' then
@@ -141,13 +214,23 @@ function M.recordMarket(kind,e)
     local f=ForeverMarketTradingFund()
     local match
     for _,lot in ipairs(f.lots) do
-      if lot.itemID==e.itemId and lot.n>0 and not lot.sold and lot.posted==e.quantity and lot.basis then
+      if lot.itemID==e.itemId and lot.n>0 and (not lot.sold or (lot.unpaid or lot.posted)<lot.posted) and (lot.unpaid or lot.posted)==e.quantity and lot.basis then
         if match then return end
         match=lot
       end
     end
-    if match then restoreLot(match,ledger(e.name)) end
+    if match then
+      local r=ledger(e.name);r.expiredDeposits=(r.expiredDeposits or 0)+match.deposit
+      restoreLot(match,r)
+    end
   end
+end
+function M.expiryWarning(name)
+  local r=M.marketOutcomes(name)
+  if not r or r.returns==0 then return end
+  local history=prefs().ledger[name]
+  local lost=history and history.expiredDeposits
+  return ('Expired %dx in 14 days'):format(r.returns),lost and ('Confirmed fund deposits lost (lifetime): '..ForeverMarketCoins(lost)) or 'Lost deposit amount unknown'
 end
 function M.valueLines(tip,id,link)
   local name=C_Item.GetItemNameByID(id)
@@ -274,7 +357,7 @@ local function cancel(r)
   return 'Cancellation requested. Collect the returned item from your mail.'
 end
 local undercutsOnly=false
-local ledgerItem,ledgerEvents,ledgerLength
+local ledgerItem,ledgerEvents,ledgerLength,flipIndex
 local function entries()
   local items={}
   local function add(name,detail,action,click,key)
@@ -288,6 +371,38 @@ local function entries()
       end
     end
     for id in pairs(not undercutsOnly and M.account().relist or {}) do add(nameOf(id),'Returned / collect mail, then open Market Sell') end
+  elseif mode=='Dip tests' then
+    for _,trial in ipairs(ForeverMarketPaperResults()) do
+      local p=trial.paper
+      add(nameOf(trial.id),('%d hit / %d missed / %d incomplete%s'):format(p.hits,p.misses,p.gaps,p.at and not p.hit and ' / watching' or ''))
+    end
+    if #items==0 then add('No trials yet','Run Invest. Each displayed dip starts a three-day price test.') end
+    return items
+  elseif mode=='Flips' then
+    local flips=ForeverMarketTradingFund().flips or {}
+    local r=flips[flipIndex]
+    if r then
+      local basis=math.floor(r.cost*r.sold/r.n)
+      add('Purchased',date('%b %d %H:%M',r.at)..' / '..r.n..' units / '..money(r.cost))
+      add('Forecast at purchase',money(r.expected)..' profit for the whole purchase')
+      if r.sold>0 then add('Paid units vs forecast',money(r.net-basis-r.lost)..' realized / '..money(math.floor(r.expected*r.sold/r.n))..' forecast') end
+      add('Sold / paid units',r.sold..' of '..r.n..' / '..money(r.net)..' after AH fees')
+      add('Realized profit',money(r.net-basis-r.lost)..' / lost deposits and fees '..money(r.lost))
+      add('Open stock',(r.n-r.sold-r.listed)..' unlisted / '..r.listed..' listed or awaiting payout')
+      add('Open purchase cost',money(r.cost-basis))
+      add('Gold collected',money(r.wallet or 0)..' including returned deposits')
+      if r.lastPaid then add('Latest payout',date('%b %d %H:%M',r.lastPaid)..' / '..math.floor((r.lastPaid-r.at)/60)..' min since purchase') end
+    else
+      local spent,wallet,lost,basis,net=0,0,0,0,0
+      for i=#flips,1,-1 do
+        local id=i;local flip=flips[id]
+        spent=spent+flip.cost;wallet=wallet+(flip.wallet or 0);net=net+flip.net;lost=lost+flip.lost;basis=basis+math.floor(flip.cost*flip.sold/flip.n)
+        add(flip.name,(flip.invest and 'Invest' or 'Flip')..' / '..flip.sold..' of '..flip.n..' paid / '..date('%b %d %H:%M',flip.at),'Details',function()flipIndex=id;page=1 end)
+      end
+      table.insert(items,1,{name='Fund performance',detail='Realized '..money(net-basis-lost)..' / open cost '..money(spent-basis)})
+      table.insert(items,2,{name='Cash flow',detail='Spent '..money(spent)..' / collected '..money(wallet)})
+    end
+    return items
   elseif mode=='Ledger' and ledgerItem then
     local db=ForeverMarketActivity
     local events=db and db.events or {}
@@ -327,7 +442,7 @@ local function render()
   if not panel or not panel:IsVisible() then return end
   local list=entries()
   local pages=math.max(1,math.ceil(#list/#rows));page=math.min(page,pages);pageLabel:SetText(page..' / '..pages)
-  title:SetText(mode=='Shopping' and ('Active shopping list: '..prefs().active) or mode=='Rules' and 'Item rules override category rules.' or mode=='Ledger' and ledgerItem and (ledgerItem..' / click Ledger to return') or mode=='Ledger' and 'Realized profit uses fund purchases matched to collected sales.' or ('My auctions / '..ForeverMarketVenueRealm()))
+  title:SetText(mode=='Dip tests' and 'Forward tests / did a later bulk quote reach the original exit?' or mode=='Flips' and (flipIndex and 'Purchase details / click Fund flips to return' or 'Confirmed Market Buy purchases since 0.12.0') or mode=='Shopping' and ('Active shopping list: '..prefs().active) or mode=='Rules' and 'Item rules override category rules.' or mode=='Ledger' and ledgerItem and (ledgerItem..' / click Ledger to return') or mode=='Ledger' and 'Realized profit uses fund purchases matched to collected sales.' or ('My auctions / '..ForeverMarketVenueRealm()))
   for i,row in ipairs(rows) do
     local r=list[(page-1)*#rows+i];row.data=r
     row.name:SetText(r and r.name or '');row.detail:SetText(r and r.detail or '')
@@ -362,6 +477,11 @@ local function create()
   title=label(panel,12,-36,655);status=label(panel,12,-124,650)
   entry=field(15,-74,166);target=field(190,-74,62);cap=field(266,-74,94);listName=field(375,-74,115)
   local function control(m,f) controls[#controls+1]={mode=m,frame=f};return f end
+  local function showFlips() mode='Flips';flipIndex=nil;page=1;status:SetText('');render() end
+  for _,m in ipairs({'Ledger','Flips','Dip tests'}) do
+    control(m,button(panel,12,-72,135,'Fund flips',showFlips))
+    control(m,button(panel,152,-72,150,'Investment tests',function()mode='Dip tests';page=1;status:SetText('');render() end))
+  end
   local function command(m,x,w,text,fn)
     control(m,button(panel,x,-98,w,text,function()local result=fn();if result then status:SetText(result) end;render()end))
   end
